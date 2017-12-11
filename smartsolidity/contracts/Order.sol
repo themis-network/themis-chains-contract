@@ -8,7 +8,7 @@ library Utils {
     /**
      * @dev copy from https://ethereum.stackexchange.com/questions/9142/how-to-convert-a-string-to-bytes32
      */
-    function stringToBytes32(string memory source) internal returns (bytes32 result) {
+    function stringToBytes32(string memory source) internal pure returns (bytes32 result) {
         bytes memory tempEmptyStringTest = bytes(source);
         if (tempEmptyStringTest.length == 0) {
             return 0x0;
@@ -22,7 +22,7 @@ library Utils {
     /**
      * @dev copy from https://ethereum.stackexchange.com/questions/2519/how-to-convert-a-bytes32-to-string
      */
-    function bytes32ToString(bytes32 x) internal constant returns (string) {
+    function bytes32ToString(bytes32 x) internal pure returns (string) {
         bytes memory bytesString = new bytes(32);
         uint charCount = 0;
         for (uint j = 0; j < 32; j++) {
