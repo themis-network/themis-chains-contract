@@ -3,7 +3,6 @@ import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.http.HttpService;
-
 import java.math.BigInteger;
 
 import static junit.framework.Assert.assertEquals;
@@ -12,6 +11,28 @@ public class SmartTest {
 
     BigInteger gasPrice = new BigInteger("0");
     BigInteger gasLimit = new BigInteger("4500000");
+
+    // data for test
+    String orderId = "orderId";
+    String buyerId = "buyerId";
+    String buyerPublicKey = "fasdfwere";
+    String buyerPrivKey = "asdfwrrgdgwer";
+    String sellerId = "sellerId";
+    String sellerPublicKey = "fsdfwenrnwer23";
+    String sellerPrivKey = "as4jdjgieijtgjkdfkg";
+    String trustAId = "qwewrasd";
+    String trustABuyPrivKey = "23434tdgsdfg";
+    String trustASellPrivkey = "34gaertedg";
+    String trustBId = "wertg324th4trgf";
+    String trustBBuyPrivKey = "dsfg42625g";
+    String trustBSellPrivKey = "wergf2453452345";
+    String trustCId = "dgt324tgfsewrg";
+    String trustCBuyPrivKey = "twert3245dfg3";
+    String trustCSellPrivKey = "sdfg4t4gerwg";
+    String virTrusteePublicKey = "asdg3q453gaedg";
+    String virTrusteePrivKey = "fasdf4tgrq3egerg";
+    BigInteger K = new BigInteger("2");
+    BigInteger N = new BigInteger("3");
 
     public Web3j GetConnection(String url) {
         Web3j web3j;
@@ -40,27 +61,16 @@ public class SmartTest {
         Credentials credentials = WalletUtils.loadCredentials("test", "wallet.json");
         Order contract = Order.load(contractAddress, web3j, credentials, gasPrice, gasLimit);
 
-        // store priv key
-        String orderId = "orderId";
-        String buyerId = "buyerId";
-        String buyerPrivKey = "asdfwrrgdgwer";
-        String sellerId = "sellerId";
-        String sellerPrivKey = "as4jdjgieijtgjkdfkg";
-        String trustAId = "qwewrasd";
-        String trustABuyPrivKey = "23434tdgsdfg";
-        String trustASellPrivkey = "34gaertedg";
-        String trustBId = "wertg324th4trgf";
-        String trustBBuyPrivKey = "dsfg42625g";
-        String trustBSellPrivKey = "wergf2453452345";
-        String trustCId = "dgt324tgfsewrg";
-        String trustCBuyPrivKey = "twert3245dfg3";
-        String trustCSellPrivKey = "sdfg4t4gerwg";
-
         // request for hosting service
-        contract.RequestHostingService(orderId, buyerId, buyerPrivKey, sellerId, sellerPrivKey).send();
-        contract.RequestHostingServiceTrustee(orderId, trustAId, trustABuyPrivKey, trustASellPrivkey).send();
-        contract.RequestHostingServiceTrustee(orderId, trustBId, trustBBuyPrivKey, trustBSellPrivKey).send();
-        contract.RequestHostingServiceTrustee(orderId, trustCId, trustCBuyPrivKey, trustCSellPrivKey).send();
+        contract.RequestHostingService(orderId, buyerId, buyerPublicKey, buyerPrivKey, virTrusteePublicKey, virTrusteePrivKey, sellerId, K, N).send();
+        contract.UploadShardKeyToTrustee(orderId, trustAId, trustABuyPrivKey, new BigInteger("1")).send();
+        contract.UploadShardKeyToTrustee(orderId, trustBId, trustBBuyPrivKey, new BigInteger("1")).send();
+        contract.UploadShardKeyToTrustee(orderId, trustCId, trustCBuyPrivKey, new BigInteger("1")).send();
+
+        contract.UploadSellerKey(orderId, sellerPublicKey, sellerPrivKey).send();
+        contract.UploadShardKeyToTrustee(orderId, trustAId, trustASellPrivkey, new BigInteger("2")).send();
+        contract.UploadShardKeyToTrustee(orderId, trustBId, trustBSellPrivKey, new BigInteger("2")).send();
+        contract.UploadShardKeyToTrustee(orderId, trustCId, trustCSellPrivKey, new BigInteger("2")).send();
 
 
         // get stored priv_key
@@ -83,6 +93,20 @@ public class SmartTest {
         String trusteeC_seller_privKey = contract.GetTrusteeStoreBuyerOrSellerEncryPrivKey(orderId, trustCId, new BigInteger("2")).send();
         assertEquals(trustCBuyPrivKey, trusteeC_buyer_privKey);
         assertEquals(trustCSellPrivKey, trusteeC_seller_privKey);
+
+        contract.JudgeUserWinByTrustee(orderId, trustAId, new BigInteger("1")).send();
+        contract.JudgeUserWinByTrustee(orderId, trustBId, new BigInteger("2")).send();
+
+        BigInteger winner = contract.JudgeWhoWin(orderId).send();
+        assertEquals(new BigInteger("0"), winner);
+
+        contract.JudgeUserWinByTrustee(orderId, trustCId, new BigInteger("1")).send();
+
+        winner = contract.JudgeWhoWin(orderId).send();
+        assertEquals(new BigInteger("1"), winner);
+
+        String keys = contract.GetWinerShardKey(orderId, new BigInteger("1")).send();
+        assertEquals(trustABuyPrivKey + "," + trustCBuyPrivKey, keys);
     }
 
     @Test
@@ -92,19 +116,10 @@ public class SmartTest {
         Credentials credentials = WalletUtils.loadCredentials("test2", "wallet2.json");
         Order contract = Order.load(contractAddress, web3j, credentials, gasPrice, gasLimit);
 
-        String orderId = "orderId";
-        String buyerId = "buyerId";
-        String buyerPrivKey = "asdfwrrgdgwer";
-        String sellerId = "sellerId";
-        String sellerPrivKey = "as4jdjgieijtgjkdfkg";
-        String trustAId = "qwewrasd";
-        String trustABuyPrivKey = "23434tdgsdfg";
-        String trustASellPrivkey = "34gaertedg";
-
-        // the RequestHostingService()/RequestHostingServiceTrustee() can be called by owner only.
+        // the RequestHostingService()/UploadShardKeyToTrustee() can be called by owner only.
         boolean execFalse = false;
         try {
-            contract.RequestHostingService(orderId, buyerId, buyerPrivKey, sellerId, sellerPrivKey).send();
+            contract.RequestHostingService(orderId, buyerId, buyerPublicKey, buyerPrivKey, virTrusteePublicKey, virTrusteePrivKey, sellerId, K, N).send();
         }
         catch (Exception e) {
             execFalse = true;
@@ -114,7 +129,17 @@ public class SmartTest {
 
         execFalse = false;
         try {
-            contract.RequestHostingServiceTrustee(orderId, trustAId, trustABuyPrivKey, trustASellPrivkey).send();
+            contract.UploadShardKeyToTrustee(orderId, trustAId, trustABuyPrivKey, new BigInteger("1")).send();
+        }
+        catch (Exception e) {
+            execFalse = true;
+        }
+
+        assertEquals(true, execFalse);
+
+        execFalse = false;
+        try {
+            contract.UploadSellerKey(orderId, sellerPublicKey, sellerPrivKey).send();
         }
         catch (Exception e) {
             execFalse = true;
