@@ -2,8 +2,15 @@ import org.junit.Test;
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+import org.web3j.protocol.core.DefaultBlockParameterNumber;
+import org.web3j.protocol.core.methods.response.EthBlock;
+import org.web3j.protocol.core.methods.response.EthBlockNumber;
 import org.web3j.protocol.http.HttpService;
+import rx.Subscription;
+
 import java.math.BigInteger;
+import java.util.concurrent.TimeUnit;
 
 import static junit.framework.Assert.assertEquals;
 
@@ -146,5 +153,87 @@ public class SmartTest {
         }
 
         assertEquals(true, execFalse);
+    }
+
+    @Test
+    public void TestReputation() throws Exception {
+        Web3j web3j = GetConnection("");
+        Credentials credentials = WalletUtils.loadCredentials("test2", "wallet2.json");
+        Reputation contract = Reputation.deploy(web3j, credentials, gasPrice, gasLimit).send();
+
+        String id = "test";
+        BigInteger reputation = contract.GetReputation(id).send();
+        assertEquals(reputation, new BigInteger("0"));
+
+        BigInteger step = new BigInteger("1");
+        contract.StoreArbitrate(id, step).send();
+
+        BigInteger after = contract.GetReputation(id).send();
+        assertEquals(after.subtract(step), reputation);
+
+        BigInteger newStep = new BigInteger("-1");
+        contract.StoreArbitrate(id, newStep).send();
+
+        BigInteger fin = contract.GetReputation(id).send();
+        assertEquals(fin.subtract(after), newStep);
+    }
+
+    @Test
+    public void TestPeer() throws Exception {
+        Web3j web3j = GetConnection("");
+        Credentials credentials = WalletUtils.loadCredentials("test2", "wallet2.json");
+        Peer contract = Peer.deploy(web3j, credentials, gasPrice, gasLimit).send();
+
+        String peer1 = "192.179.1.1:080";
+        String address = "0x05defc201c84076e1515bab50a3a25a39ab9c4d4";
+        String info = "this is peer one, in beijing china";
+
+        contract.JoinOrUpdate(peer1, address, info).send();
+        String peers = contract.GetAllPeers().send();
+        assertEquals(peer1, peers);
+
+        String newAddress = "0xc311e6346c9817bbc8db89fc8db79faf6d454c2c";
+        contract.JoinOrUpdate(peer1, newAddress, info).send();
+        String acutalAdd = contract.GetPeerAccount(peer1).send();
+        assertEquals(acutalAdd, newAddress);
+
+        String peer2 = "192.23.123.11:999";
+        contract.JoinOrUpdate(peer2, newAddress, info).send();
+        String newPeers = contract.GetAllPeers().send();
+        assertEquals(newPeers, peer1 + "," + peer2);
+    }
+
+    @Test
+    public void TestObBlock() throws Exception {
+        CatchToLastetBlock();
+        CatchFromStartToEnd();
+    }
+
+    // this will throw exception when reach latest block
+    public void CatchToLastetBlock() throws Exception {
+        Web3j web3j = GetConnection("");
+
+        BigInteger start = new BigInteger("1");
+        DefaultBlockParameterNumber startBlock = new DefaultBlockParameterNumber(start);
+
+        web3j.catchUpToLatestAndSubscribeToNewBlocksObservable(startBlock, false).subscribe(block -> {
+            System.out.println("Block number " + block.getBlock().getNumber());
+            System.out.println("Miner is : " + block.getBlock().getMiner());
+        }, Throwable::printStackTrace);
+    }
+
+    // this not occur exception
+    public void CatchFromStartToEnd() throws Exception {
+        Web3j web3j = GetConnection("");
+        BigInteger start = new BigInteger("1");
+        DefaultBlockParameterNumber startBlock = new DefaultBlockParameterNumber(start);
+
+        EthBlockNumber blockNumber = web3j.ethBlockNumber().send();
+        DefaultBlockParameterNumber endBlock = new DefaultBlockParameterNumber(blockNumber.getBlockNumber());
+
+        web3j.replayBlocksObservable(startBlock, endBlock, false).subscribe(block -> {
+            System.out.println("Block number " + block.getBlock().getNumber());
+            System.out.println("Miner is : " + block.getBlock().getMiner());
+        },  Throwable::printStackTrace);
     }
 }
