@@ -1,18 +1,29 @@
+import org.bouncycastle.util.encoders.Hex;
 import org.junit.Test;
+import org.web3j.abi.FunctionEncoder;
+import org.web3j.abi.TypeReference;
+import org.web3j.abi.datatypes.Function;
+import org.web3j.abi.datatypes.Type;
+import org.web3j.abi.datatypes.Utf8String;
 import org.web3j.crypto.Credentials;
+import org.web3j.crypto.RawTransaction;
+import org.web3j.crypto.TransactionEncoder;
 import org.web3j.crypto.WalletUtils;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.DefaultBlockParameterNumber;
-import org.web3j.protocol.core.methods.response.EthBlock;
-import org.web3j.protocol.core.methods.response.EthBlockNumber;
+import org.web3j.protocol.core.Response;
+import org.web3j.protocol.core.methods.response.*;
 import org.web3j.protocol.http.HttpService;
 import rx.Subscription;
 
 import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.failNotEquals;
 
 public class SmartTest {
 
@@ -211,7 +222,7 @@ public class SmartTest {
 
     // this will throw exception when reach latest block
     public void CatchToLastetBlock() throws Exception {
-        Web3j web3j = GetConnection("");
+        Web3j web3j = GetConnection("http://192.168.1.205:8545");
 
         BigInteger start = new BigInteger("1");
         DefaultBlockParameterNumber startBlock = new DefaultBlockParameterNumber(start);
@@ -224,7 +235,7 @@ public class SmartTest {
 
     // this not occur exception
     public void CatchFromStartToEnd() throws Exception {
-        Web3j web3j = GetConnection("");
+        Web3j web3j = GetConnection("http://192.168.1.205:8545");
         BigInteger start = new BigInteger("1");
         DefaultBlockParameterNumber startBlock = new DefaultBlockParameterNumber(start);
 
@@ -235,5 +246,91 @@ public class SmartTest {
             System.out.println("Block number " + block.getBlock().getNumber());
             System.out.println("Miner is : " + block.getBlock().getMiner());
         },  Throwable::printStackTrace);
+    }
+
+    @Test
+    public void TestCreateEthereum() throws Exception {
+
+        // back end build web3j
+        Web3j web3j = GetConnection("http://192.168.1.205:8545");
+
+        // load on front end
+        Credentials credentials = WalletUtils.loadCredentials("test", "wallet.json");
+        String to = "0xc311e6346c9817bbc8db89fc8db79faf6d454c2c";
+        BigInteger value = new BigInteger("111");
+
+        EthGetBalance ethGetBalance = web3j.ethGetBalance(credentials.getAddress(), DefaultBlockParameterName.LATEST).send();
+        System.out.println("eth balance is :" + ethGetBalance.getBalance());
+
+        // This will send request to back end
+        EthGetTransactionCount ethGetTransactionCount = web3j.ethGetTransactionCount(
+                credentials.getAddress(), DefaultBlockParameterName.LATEST).send();
+        BigInteger nonce = ethGetTransactionCount.getTransactionCount();
+
+        System.out.println("nonce is :" + nonce);
+
+        // generate transaction on front end
+        RawTransaction rawTransaction = RawTransaction.createEtherTransaction(nonce, gasPrice, gasLimit, to, value);
+        byte[] signedMessage = TransactionEncoder.signMessage(rawTransaction, credentials);
+        String hexValue = Hex.toHexString(signedMessage);
+        // this is not on doc; but without 0x, ethSendRawTransaction method will fail
+        if (!hexValue.startsWith("0x")) {
+            hexValue = "0x" + hexValue;
+        }
+
+        // back end send transaction to web3j
+        EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(hexValue).send();
+        Response.Error err = ethSendTransaction.getError();
+        if (err != null) {
+            System.out.println(err.getMessage());
+            return;
+        }
+
+        System.out.println("tx hash is: " + ethSendTransaction.getTransactionHash());
+
+    }
+
+    @Test
+    public void TestCreateContract() throws Exception {
+        // do on back end
+        Web3j web3j = GetConnection("http://192.168.1.205:8545");
+
+        // do on front end
+        Credentials credentials = WalletUtils.loadCredentials("test", "wallet.json");
+
+        // do on front end; send request to back end to get nonce
+        EthGetTransactionCount ethGetTransactionCount = web3j.ethGetTransactionCount(
+                credentials.getAddress(), DefaultBlockParameterName.LATEST).sendAsync().get();
+        BigInteger nonce = ethGetTransactionCount.getTransactionCount();
+
+
+        String _to = "0xc311e6346c9817bbc8db89fc8db79faf6d454c2c";
+        BigInteger _value = new BigInteger("1000000000");
+        Function function = new Function(
+                "transfer",
+                Arrays.<Type>asList(new org.web3j.abi.datatypes.Address(_to),
+                        new org.web3j.abi.datatypes.generated.Uint256(_value)),
+                Collections.<TypeReference<?>>emptyList());
+        String encodedFunction = FunctionEncoder.encode(function);
+
+        // peer contract address
+        String contractAddress = "0x69f30389d2250e5261422020757597bC6d7516b8";
+        RawTransaction rawTransaction = RawTransaction.createTransaction(nonce, gasPrice, gasLimit, contractAddress, encodedFunction);
+        byte[] signedMessage = TransactionEncoder.signMessage(rawTransaction, credentials);
+        String hexValue = Hex.toHexString(signedMessage);
+        // this is not on doc; but without 0x, ethSendRawTransaction method will fail
+        if (!hexValue.startsWith("0x")) {
+            hexValue = "0x" + hexValue;
+        }
+
+        // back end send transaction to web3j
+        EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(hexValue).send();
+        Response.Error err = ethSendTransaction.getError();
+        if (err != null) {
+            System.out.println(err.getMessage());
+            return;
+        }
+
+        System.out.println("tx hash is: " + ethSendTransaction.getTransactionHash());
     }
 }

@@ -19,6 +19,16 @@ module.exports = {
       port: 8545,
       host: "localhost",
       gasLimit: 4500000,
+    },
+    testNet: {
+      network_id: "20",
+      port: 8545,
+      host: "192.168.1.205",
+      // set this can change gas used
+      gas: 4000000,
+      // can use truffle console --network testNet
+      // web3.eth.getBlock("latest").gasLimit to set gasLimit
+      gasLimit: 4812388,
     }
   }
 }
