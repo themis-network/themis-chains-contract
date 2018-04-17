@@ -29,6 +29,12 @@ module.exports = {
       // can use truffle console --network testNet
       // web3.eth.getBlock("latest").gasLimit to set gasLimit
       gasLimit: 4812388,
-    }
+    },
+    mainNet: {
+      network_id: "*",
+      port: 8545,
+      host: "192.168.1.102",
+      gasLimit: 5000000,
+    },
   }
 }
