@@ -2,10 +2,17 @@ pragma solidity ^0.4.18;
 
 import "./Ownable.sol";
 import "./librarys/strings.sol";
+import "./FeeManager.sol";
+import "./Vss.sol";
 
 contract Trade is Ownable {
 
     using strings for *;
+
+    string constant SEPARATE = ",";
+
+    FeeManager feeManager;
+    Vss vss;
 
     struct TradeOrder {
 
@@ -28,7 +35,8 @@ contract Trade is Ownable {
         // User type => len
         mapping(uint256 => uint256) decryptedShardLen;
 
-        // TODO Add a state indicator
+        // Info of judge
+        JudgeInfo judgeInfo;
     }
 
     uint256 constant BUYER = 1;
@@ -39,12 +47,22 @@ contract Trade is Ownable {
         string shard;
     }
 
+    struct JudgeInfo {
+        // Private key recovered only when conflict occurs
+        string recoverPrivKey;
+
+        // state of this order
+        // can indicate who(user/seller) wins when conflict occurs
+        uint256 state;
+    }
+
     mapping(uint256 => TradeOrder) order;
 
     event CreateOrder(uint256 orderID, address indexed buyer, address indexed seller);
 
     event UploadEncryptedShard(uint256 orderID, address indexed who, uint256 userType, string shards);
 
+    event RecoverPrivKey(uint256 orderID, uint256 userType, string privKey);
 
     // Function can be call by seller or buyer
     modifier BuyerOrSeller(uint256 orderID, uint256 userType) {
@@ -113,7 +131,10 @@ contract Trade is Ownable {
     // Seller upload buyer's shard
     // userType indicate msg send from buyer or seller
     function UploadBuyerOrSellerShard(uint256 orderID, uint256 userType, string _shard, address[] _hosterID) BuyerOrSeller(orderID, userType) public returns(bool) {
-        // No need to check order again for it has been check by OnlyBuyer
+        // No need to check order again for it has been check by BuyerOrSeller
+
+        // Pay judge fee
+        assert(feeManager.PayFee(orderID, feeManager.GetJudgeService(), msg.sender, _hosterID));
 
         uint256 storageType;
         if (userType == BUYER) {
@@ -123,7 +144,7 @@ contract Trade is Ownable {
             storageType = BUYER;
         }
 
-        var delim = ",".toSlice();
+        var delim = SEPARATE.toSlice();
         var s = _shard.toSlice();
         var shardArrayLength = s.count(delim) + 1;
         // _shard should be "encryptedShard,encryptedShard,......", and it's length should be same with _hosterID
@@ -169,7 +190,7 @@ contract Trade is Ownable {
 
 
     // Get shard decrypted by hoster
-    function GetDecryptedShard(uint256 orderID, uint256 userType, address hoster) public view returns(string) {
+    function GetDecryptedShard(uint256 orderID, uint256 userType, address hoster) BuyerOrSeller(orderID, userType) public view returns(string) {
         require(userType == BUYER || userType == SELLER);
 
         return order[orderID].decryptedShard[userType][hoster].shard;
@@ -188,7 +209,8 @@ contract Trade is Ownable {
             require(order[orderID].decryptedShard[BUYER][msg.sender].shard.toSlice().empty());
         }
 
-        // TODO check decrypted shard is right or not
+        // Check this share is right or not
+        require(vss.verifyShare(decryptedShard));
 
         // Indicate first upload
         if (order[orderID].decryptedShard[userType][msg.sender].shard.toSlice().empty()) {
@@ -196,8 +218,52 @@ contract Trade is Ownable {
         }
         order[orderID].decryptedShard[userType][msg.sender].shard = decryptedShard;
 
-        // TODO Check decrypted shard length of buyer/seller bigger than N
-        // TODO recover private key
+        // Cover private key when shards length is bigger than N
+        // TODO wait for vss completed to change
+        if (order[orderID].decryptedShardLen[userType] >= vss.GetN()) {
+            order[orderID].judgeInfo.state = userType;
+        }
+
         return true;
     }
+
+
+    // TODO String/struct can not pass between contracts
+    // Recover private key for buyer/seller
+//    function recoverPrivateKey(uint256 orderID, uint256 userType) BuyerOrSeller(orderID, userType) public returns(string) {
+//        // Has recovered before, just return
+//        if (!order[orderID].judgeInfo.recoverPrivKey.toSlice().empty()) {
+//            return order[orderID].judgeInfo.recoverPrivKey;
+//        }
+//
+//        // Only winner can cover opponent's priv key
+//        require(order[orderID].judgeInfo.state == userType);
+//
+//        var shards = "".toSlice();
+//        uint256 num = 0;
+//
+//        for (uint256 i = 0; i < order[orderID].hosters[userType].length; i++) {
+//            //
+//            var tmpHoster = order[orderID].hosters[userType][i];
+//            var tmpDecryptedShard = order[orderID].decryptedShard[userType][tmpHoster].shard;
+//            if (!tmpDecryptedShard.toSlice().empty() && num < vss.GetN()) {
+//                shards = shards.concat(SEPARATE.toSlice()).toSlice();
+//                shards = shards.concat(tmpDecryptedShard.toSlice()).toSlice();
+//                num++;
+//            }
+//        }
+//
+//        // Remove last ","
+//        shards = shards.until(SEPARATE.toSlice());
+//
+//        require(num == vss.GetN());
+//        // Recover Private Key
+//        // TODO string can not passed between contracts
+//        vss.recoverPrivateKey(shards);
+////        order[orderID].judgeInfo.recoverPrivKey = vss.recoverPrivateKey(shards).toString();
+//
+//        RecoverPrivKey(orderID, userType, order[orderID].judgeInfo.recoverPrivKey);
+//
+//        return order[orderID].judgeInfo.recoverPrivKey;
+//    }
 }

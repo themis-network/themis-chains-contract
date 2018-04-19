@@ -1,16 +1,8 @@
-const fs = require('fs')
-
-// First read in the secrets.json to get our mnemonic
-let secrets
-let mnemonic
-if (fs.existsSync('secrets.json')) {
-  secrets = JSON.parse(fs.readFileSync('secrets.json', 'utf8'))
-  mnemonic = secrets.mnemonic
-} else {
-  console.log('No secrets.json found. If you are trying to publish EPM ' +
-              'this will fail. Otherwise, you can ignore this message!')
-  mnemonic = ''
-}
+require('babel-register')({
+    // Important to have zeppelin-solidity working on
+    ignore: /node_modules\/(?!zeppelin-solidity)/
+});
+require('babel-polyfill');
 
 module.exports = {
   networks: {
