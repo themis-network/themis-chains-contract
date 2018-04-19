@@ -64,6 +64,8 @@ contract Trade is Ownable {
 
     event RecoverPrivKey(uint256 orderID, uint256 userType, string privKey);
 
+    event UploadDecryptedShards(uint256 orderID, address indexed hoster, uint256 userType, string decryptedShard);
+
     // Function can be call by seller or buyer
     modifier BuyerOrSeller(uint256 orderID, uint256 userType) {
         require(userType == BUYER || userType == SELLER);
@@ -102,19 +104,26 @@ contract Trade is Ownable {
     }
 
 
-    function Trade() public {
+    // Init with feeManager and vss
+    function Trade(address _feeManager, address _vss) public {
+        require(_feeManager != address(0));
+        require(_vss != address(0));
 
+        feeManager = FeeManager(_feeManager);
+        vss = Vss(_vss);
     }
 
 
     // This should be called when buyer/seller generate a new trade order(tmp?)
-    // TODO workflow should be changed to this situation:
+    // TODO workflow may be changed to this situation ?:
     // TODO 1. buyer create/upload a new order
     // TODO 2. seller confirm info on chain
     function CreateNewTradeOrder(uint256 orderID, address buyer, address seller) public onlyOwner returns(bool){
         // Ensure orderID haven't been used before
         require(order[orderID].user[BUYER] == address(0));
         require(order[orderID].user[SELLER] == address(0));
+        require(buyer != address(0));
+        require(seller != address(0));
 
         order[orderID].user[BUYER] = buyer;
         order[orderID].user[SELLER] = seller;
@@ -133,9 +142,6 @@ contract Trade is Ownable {
     function UploadBuyerOrSellerShard(uint256 orderID, uint256 userType, string _shard, address[] _hosterID) BuyerOrSeller(orderID, userType) public returns(bool) {
         // No need to check order again for it has been check by BuyerOrSeller
 
-        // Pay judge fee
-        assert(feeManager.PayFee(orderID, feeManager.GetJudgeService(), msg.sender, _hosterID));
-
         uint256 storageType;
         if (userType == BUYER) {
             storageType = SELLER;
@@ -147,18 +153,21 @@ contract Trade is Ownable {
         var delim = SEPARATE.toSlice();
         var s = _shard.toSlice();
         var shardArrayLength = s.count(delim) + 1;
-        // _shard should be "encryptedShard,encryptedShard,......", and it's length should be same with _hosterID
+        // _shard like "encryptedShard,encryptedShard,......", and it's length should be same with _hosterID
         require(shardArrayLength == _hosterID.length);
 
         // Will cover value before if this is not the first time
-        order[orderID].hosters[userType] = _hosterID;
+        order[orderID].hosters[storageType] = _hosterID;
         for (uint256 i = 0; i < shardArrayLength; i++) {
             var tmpShard = s.split(delim).toString();
 
-            order[orderID].hosterShard[_hosterID[i]][userType].shard = tmpShard;
+            order[orderID].hosterShard[_hosterID[i]][storageType].shard = tmpShard;
         }
 
-        UploadEncryptedShard(orderID, msg.sender, userType, _shard);
+        UploadEncryptedShard(orderID, msg.sender, storageType, _shard);
+
+        // Pay judge fee
+        assert(feeManager.PayFee(orderID, feeManager.GetJudgeService(), msg.sender, _hosterID));
         return true;
     }
 
@@ -200,7 +209,20 @@ contract Trade is Ownable {
     // Hoster upload decrypted shard which indicate that he judged buyer/seller has win the conflict
     // The shard will be used to recover buyer's private key which is used only in this order
     // Upload buyer shard means Seller has win the conflict
+    // userType means whose' shard you upload
     function UploadDecryptedShard(uint256 orderID, uint256 userType, string decryptedShard) OnlyHoster(orderID, userType) public returns(bool) {
+
+        // Ensure only one can win
+        // TODO may reject all uploads after private key can be recovered
+        if(order[orderID].judgeInfo.state != 0) {
+            if (userType == BUYER) {
+                require(order[orderID].judgeInfo.state == SELLER);
+            }
+
+            if (userType == SELLER) {
+                require(order[orderID].judgeInfo.state == BUYER);
+            }
+        }
 
         // Hoster can only upload one of user or seller's shard indicate only one win conflict
         if (userType == BUYER) {
@@ -221,49 +243,17 @@ contract Trade is Ownable {
         // Cover private key when shards length is bigger than N
         // TODO wait for vss completed to change
         if (order[orderID].decryptedShardLen[userType] >= vss.GetN()) {
-            order[orderID].judgeInfo.state = userType;
+            // This mean who wins
+            if (userType == BUYER) {
+                order[orderID].judgeInfo.state = SELLER;
+            }
+
+            if (userType == SELLER) {
+                order[orderID].judgeInfo.state = BUYER;
+            }
         }
 
+        UploadDecryptedShards(orderID, msg.sender, userType, decryptedShard);
         return true;
     }
-
-
-    // TODO String/struct can not pass between contracts
-    // Recover private key for buyer/seller
-//    function recoverPrivateKey(uint256 orderID, uint256 userType) BuyerOrSeller(orderID, userType) public returns(string) {
-//        // Has recovered before, just return
-//        if (!order[orderID].judgeInfo.recoverPrivKey.toSlice().empty()) {
-//            return order[orderID].judgeInfo.recoverPrivKey;
-//        }
-//
-//        // Only winner can cover opponent's priv key
-//        require(order[orderID].judgeInfo.state == userType);
-//
-//        var shards = "".toSlice();
-//        uint256 num = 0;
-//
-//        for (uint256 i = 0; i < order[orderID].hosters[userType].length; i++) {
-//            //
-//            var tmpHoster = order[orderID].hosters[userType][i];
-//            var tmpDecryptedShard = order[orderID].decryptedShard[userType][tmpHoster].shard;
-//            if (!tmpDecryptedShard.toSlice().empty() && num < vss.GetN()) {
-//                shards = shards.concat(SEPARATE.toSlice()).toSlice();
-//                shards = shards.concat(tmpDecryptedShard.toSlice()).toSlice();
-//                num++;
-//            }
-//        }
-//
-//        // Remove last ","
-//        shards = shards.until(SEPARATE.toSlice());
-//
-//        require(num == vss.GetN());
-//        // Recover Private Key
-//        // TODO string can not passed between contracts
-//        vss.recoverPrivateKey(shards);
-////        order[orderID].judgeInfo.recoverPrivKey = vss.recoverPrivateKey(shards).toString();
-//
-//        RecoverPrivKey(orderID, userType, order[orderID].judgeInfo.recoverPrivKey);
-//
-//        return order[orderID].judgeInfo.recoverPrivKey;
-//    }
 }

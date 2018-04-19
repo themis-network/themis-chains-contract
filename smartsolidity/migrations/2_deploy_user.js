@@ -1,6 +1,6 @@
 const Hoster = artifacts.require("./Hoster.sol");
 const GET = artifacts.require("./GEToken.sol");
-const FeeManager = artifacts.require("./FeeManager");
+const FeeManager = artifacts.require("./FeeManager.sol");
 
 
 module.exports = (deployer) => {

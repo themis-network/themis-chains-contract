@@ -7,7 +7,7 @@ contract Vss {
     using strings for *;
 
     uint256 public N;
-    function Vss(){
+    function Vss() public {
 
     }
 
