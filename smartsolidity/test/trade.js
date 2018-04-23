@@ -5,9 +5,6 @@ const FeeManager = artifacts.require("./FeeManager");
 const Trade = artifacts.require("Trade");
 const Vss = artifacts.require("Vss");
 
-const BUYER = 1;
-const SELLER = 2;
-
 contract("Trade test", function (accounts) {
 
     before(async function () {
@@ -24,11 +21,11 @@ contract("Trade test", function (accounts) {
         const seller = accounts[2];
         const orderID = 1;
 
-        await this.TradeIns.CreateNewTradeOrder(orderID, buyer, seller);
-        let actualBuyer = await this.TradeIns.GetBuyerOrSeller(orderID, BUYER);
+        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller);
+        let actualBuyer = await this.TradeIns.getBuyer(orderID);
         assert.equal(actualBuyer, buyer, "buyer should be right set");
 
-        let acutalSeller = await this.TradeIns.GetBuyerOrSeller(orderID, SELLER);
+        let acutalSeller = await this.TradeIns.getSeller(orderID);
         assert.equal(acutalSeller, seller, "seller should be right set");
     })
 
@@ -38,17 +35,17 @@ contract("Trade test", function (accounts) {
         const seller = accounts[2];
         const orderID = 1;
 
-        await assertRevert(this.TradeIns.CreateNewTradeOrder(orderID, buyer, seller));
+        await assertRevert(this.TradeIns.createNewTradeOrder(orderID, buyer, seller));
     })
 
 
-    it("only buyer/seller can upload encrypted shard(mean request judgement service)", async function () {
+    it("only buyer/seller can upload encrypted shard(mean request artibaion service)", async function () {
         const buyer = accounts[1];
         const seller = accounts[2];
         const others = accounts[3];
         const orderID = 2;
 
-        await this.TradeIns.CreateNewTradeOrder(orderID, buyer, seller);
+        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller);
 
         // Only buyer can upload seller's encrypted shard
         const sellerEncryptedShard_1 = "asbdsdfbheg34";
@@ -62,20 +59,19 @@ contract("Trade test", function (accounts) {
         await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(50, "ether"), {from: buyer});
         await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(50, "ether"), {from: seller});
 
-        // BUYER indicate this msg is send from buyer
-        await this.TradeIns.UploadBuyerOrSellerShard(orderID, BUYER, sellerShard, accounts.slice(3, 6), {from: buyer});
+        await this.TradeIns.uploadSellerShardFromBuyer(orderID, sellerShard, accounts.slice(3, 6), {from: buyer});
 
         // reject calls from others except buyer/seller
-        await assertRevert(this.TradeIns.UploadBuyerOrSellerShard(orderID, BUYER, sellerShard, accounts.slice(3, 6), {from: others}))
+        await assertRevert(this.TradeIns.uploadSellerShardFromBuyer(orderID, sellerShard, accounts.slice(3, 6), {from: others}))
 
         // Check shard is right uploaded
         const host_1 = accounts[3];
         const host_2 = accounts[4];
         const host_3 = accounts[5];
         // SELLER indicate this is seller's shard uploaded by buyer
-        let shard_1 = await this.TradeIns.GetShardByHosterID(orderID, host_1, SELLER);
-        let shard_2 = await this.TradeIns.GetShardByHosterID(orderID, host_2, SELLER);
-        let shard_3 = await this.TradeIns.GetShardByHosterID(orderID, host_3, SELLER);
+        let shard_1 = await this.TradeIns.getSellerShardByHosterID(orderID, host_1);
+        let shard_2 = await this.TradeIns.getSellerShardByHosterID(orderID, host_2);
+        let shard_3 = await this.TradeIns.getSellerShardByHosterID(orderID, host_3);
         shard_1.should.equal(sellerEncryptedShard_1);
         shard_2.should.equal(sellerEncryptedShard_2);
         shard_3.should.equal(sellerEncryptedShard_3);
@@ -93,6 +89,7 @@ contract("Trade test", function (accounts) {
 
     it("hoster can upload buyer/seller's decrypted shard means another wins conflict", async function () {
         // order created before
+        const buyer = accounts[1];
         const orderID = 2;
         const decrypted_shard_1 = "sdsdfgwertydfh";
         const decrypted_shard_2 = "asdfwexbvert";
@@ -103,17 +100,23 @@ contract("Trade test", function (accounts) {
         const host_3 = accounts[5];
 
         // Check hoster'id is right stored
-        let hosters = await this.TradeIns.GetHosters(orderID, SELLER);
+        let hosters = await this.TradeIns.getSellerShardHosters(orderID);
         hosters[0].should.equal(host_1);
         hosters[1].should.equal(host_2);
         hosters[2].should.equal(host_3);
 
         // This means buyer wins
-        await this.TradeIns.UploadDecryptedShard(orderID, SELLER, decrypted_shard_1, {from:host_1});
-        await this.TradeIns.UploadDecryptedShard(orderID, SELLER, decrypted_shard_2, {from:host_2});
-        await this.TradeIns.UploadDecryptedShard(orderID, SELLER, decrypted_shard_3, {from:host_3});
+        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_1, {from:host_1});
+        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_2, {from:host_2});
+        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_3, {from:host_3});
 
         // Check decrypted shard is right uploaded
+        let actual_decrypted_shard_1 = await this.TradeIns.getSellerDecryptedShard(orderID, host_1, {from: buyer});
+        let actual_decrypted_shard_2 = await this.TradeIns.getSellerDecryptedShard(orderID, host_2, {from: buyer});
+        let actual_decrypted_shard_3 = await this.TradeIns.getSellerDecryptedShard(orderID, host_3, {from: buyer});
 
+        actual_decrypted_shard_1.should.equal(decrypted_shard_1);
+        actual_decrypted_shard_2.should.equal(decrypted_shard_2);
+        actual_decrypted_shard_3.should.equal(decrypted_shard_3);
     })
 });

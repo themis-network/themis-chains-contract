@@ -28,14 +28,14 @@ contract("Hoster test", function(accounts){
             const newUser = accounts[1];
             const fame = 0;
             const publicKey = "adfsfs";
-            await this.HosterIns.AddUser(newUser, fame, publicKey, NORMAL_USER);
-            let isThemisUser = await this.HosterIns.IsThemisUser(newUser);
+            await this.HosterIns.addUser(newUser, fame, publicKey, NORMAL_USER);
+            let isThemisUser = await this.HosterIns.isThemisUser(newUser);
             assert.equal(isThemisUser, true, "should be right added to themis user");
 
             // Update User
             const newFame = 1;
             const newPublicKey = "asdfzz";
-            await this.HosterIns.UpdateUser(newUser, newFame, newPublicKey, NORMAL_USER);
+            await this.HosterIns.updateUser(newUser, newFame, newPublicKey, NORMAL_USER);
 
             let acutalUser = await this.HosterIns.users.call(newUser);
             let actualPublicKey = acutalUser[2];
@@ -44,8 +44,8 @@ contract("Hoster test", function(accounts){
             assert.equal(actualFame, newFame, "should right update fame");
 
             // Remove user
-            await this.HosterIns.RemoveUser(newUser);
-            isThemisUser = await this.HosterIns.IsThemisUser(newUser);
+            await this.HosterIns.removeUser(newUser);
+            isThemisUser = await this.HosterIns.isThemisUser(newUser);
             assert.equal(isThemisUser, false, "should right remove user");
         });
     });
@@ -58,9 +58,9 @@ contract("Hoster test", function(accounts){
             const deposit = 100;
             const publicKey = "adfsfs";
 
-            await this.HosterIns.AddHoster(hoster, fame, deposit, publicKey);
+            await this.HosterIns.addHoster(hoster, fame, deposit, publicKey);
             // Will add it to themis user auto
-            let isThemisUser = await this.HosterIns.IsThemisUser(hoster);
+            let isThemisUser = await this.HosterIns.isThemisUser(hoster);
             assert.equal(isThemisUser, true, "should add hoster to themis user auto when hoster is not themis user");
         })
 
@@ -71,26 +71,26 @@ contract("Hoster test", function(accounts){
             const newFame = 5;
             const newDeposit = 90;
             const newPublicKey = "aaaaaa";
-            await this.HosterIns.AddUser(user, newFame, newPublicKey, 0);
-            let isHoster = await this.HosterIns.IsHoster(user);
+            await this.HosterIns.addUser(user, newFame, newPublicKey, 0);
+            let isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, false, "normal user is not hoster");
 
-            await this.HosterIns.UpdateNormalUserToHoster(user, newDeposit);
-            isHoster = await this.HosterIns.IsHoster(user);
+            await this.HosterIns.updateNormalUserToHoster(user, newDeposit);
+            isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, true, "should right update normal user to hoster");
         })
 
 
         it("should right remove hoster", async function() {
             const user = accounts[2];
-            let isHoster = await this.HosterIns.IsHoster(user);
+            let isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, true, "user 2 is a hoster before");
 
-            await this.HosterIns.RemoveHoster(user);
-            isHoster = await this.HosterIns.IsHoster(user);
+            await this.HosterIns.removeHoster(user);
+            isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, false, "user 2 should be right remove from hoster");
 
-            let isThemisUser = await this.HosterIns.IsThemisUser(user);
+            let isThemisUser = await this.HosterIns.isThemisUser(user);
             assert.equal(isThemisUser, true, "user 2 should retain themis user");
         })
     })
@@ -106,28 +106,28 @@ contract("Hoster test", function(accounts){
             const user3Fame = 7;
             const user3Deposit = 1;
             const user3PublicKey = "asdf123";
-            await this.HosterIns.AddHoster(should_be_2, user3Fame, user3Deposit, user3PublicKey);
+            await this.HosterIns.addHoster(should_be_2, user3Fame, user3Deposit, user3PublicKey);
 
             const should_be_4 = accounts[4];
             const user4Fame = 4;
             const user4Deposit = 200;
             const user4PublicKey = "asdasdff123";
-            await this.HosterIns.AddHoster(should_be_4, user4Fame, user4Deposit, user4PublicKey);
+            await this.HosterIns.addHoster(should_be_4, user4Fame, user4Deposit, user4PublicKey);
 
             const should_be_1 = accounts[5];
             const user5Fame = 7;
             const user5Deposit = 200;
             const user5PublicKey = "asdasdff123";
-            await this.HosterIns.AddHoster(should_be_1, user5Fame, user5Deposit, user5PublicKey);
+            await this.HosterIns.addHoster(should_be_1, user5Fame, user5Deposit, user5PublicKey);
 
             // Check node list is sort by fame, deposit or not
-            await assertRevert(this.HosterIns.GetHosters(orderID, 3));
+            await assertRevert(this.HosterIns.getHosters(orderID, 3));
 
             // Normal user get hoster'id
             const normalUser = accounts[7];
             const normalFame = 1;
             const publicKey = "fsafwe";
-            await this.HosterIns.AddUser(normalUser, normalFame, publicKey, NORMAL_USER);
+            await this.HosterIns.addUser(normalUser, normalFame, publicKey, NORMAL_USER);
             // Ensure normal user has enough get tokens
             await this.GETIns.transfer(normalUser, web3.toWei(100, "ether"));
             // Approve 50 GET tokens as fee
@@ -136,10 +136,7 @@ contract("Hoster test", function(accounts){
             const allow = await this.GETIns.allowance(normalUser, this.FeeManagerIns.address);
             assert.equal(allow, web3.toWei(50, "ether"), "should allow 50 Get");
 
-            let isThemisUser = await this.HosterIns.IsThemisUser(normalUser);
-            assert.equal(isThemisUser, true, "should be added as themis user");
-
-            let { logs } = await this.HosterIns.GetHosters(orderID, 4, {from: normalUser});
+            let { logs } = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
             const log = logs.find(e => e.event === "GetThemisHosters");
             should.exist(log);
             let acutal_1 = log.args.hosters[0];
@@ -166,7 +163,7 @@ contract("Hoster test", function(accounts){
 
             // number of nodes/hosters want to get is bigger than nodes/hoster's length
             // just return all nodes
-            let logs_all = await this.HosterIns.GetHosters(orderID, 5, {from: normalUser});
+            let logs_all = await this.HosterIns.getHosters(orderID, 5, {from: normalUser});
             const log_all = logs_all.logs.find(e => e.event === "GetThemisHosters");
             should.exist(log_all);
             log_all.args.hosters.length.should.equal(4);
@@ -178,7 +175,7 @@ contract("Hoster test", function(accounts){
             // Should be the first one returned
             const should_be_1 = accounts[5];
             const newFame = 5;
-            await this.HosterIns.UpdateUserFame(should_be_1, newFame);
+            await this.HosterIns.updateUserFame(should_be_1, newFame);
             let actualUser = await this.HosterIns.user.call(should_be_1);
             let actualFame = actualUser[1];
             actualFame.should.equal(newFame);
@@ -189,7 +186,7 @@ contract("Hoster test", function(accounts){
             const new_should_be_4 = accounts[4];
 
             // const normalUser = accounts[7];
-            let { logs } = await this.HosterIns.GetHosters(orderID, 4, {from: normalUser});
+            let { logs } = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
             const log = logs.find(e => e.event === "GetThemisHosters");
             should.exist(log);
             let acutal_1 = log.args.hosters[0];
@@ -206,10 +203,10 @@ contract("Hoster test", function(accounts){
             // Update deposit
             const newDeposit = 50;
             // Only user self can call this function
-            await this.HosterIns.UpdateUserDeposit(newDeposit, {from: should_be_1});
+            await this.HosterIns.updateUserDeposit(newDeposit, {from: should_be_1});
 
             // const normalUser = accounts[7];
-            let tx = await this.HosterIns.GetHosters(orderID, 4, {from: normalUser});
+            let tx = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
             const new_log = tx.logs.find(e => e.event === "GetThemisHosters");
             should.exist(new_log);
             acutal_1 = new_log.args.hosters[0];
