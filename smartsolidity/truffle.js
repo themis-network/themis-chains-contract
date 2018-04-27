@@ -2,6 +2,7 @@ require('babel-register')({
     // Important to have zeppelin-solidity working on
     ignore: /node_modules\/(?!zeppelin-solidity)/
 });
+
 require('babel-polyfill');
 
 module.exports = {
