@@ -27,6 +27,9 @@ contract ERC20 is ERC20Basic {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+/**
+ * @dev Main manager for fee
+ */
 contract FeeManager is Ownable {
 
     ERC20 public GET;
@@ -40,7 +43,29 @@ contract FeeManager is Ownable {
     // Unit in wei
     uint256 public feeRate;
 
-    event FeePayed(uint256 orderID, ServiceType serviceType, uint256 payedFee, address[] serviceNodes);
+    // Deposit payed by a user when becoming a hoster
+    mapping(address => uint256) depositPayed;
+
+    // Hoster contract
+    address hosterContract;
+
+    // Trade contract
+    address tradeContract;
+
+    event FeePayed(
+        uint256 orderID,
+        ServiceType serviceType,
+        uint256 payedFee,
+        address[] serviceNodes
+    );
+
+    event PayDeposit(address indexed user, uint256 deposit);
+
+    event WithDrawDeposit(address indexed user, uint256 deposit);
+
+    event UpdateHosterContract(address indexed hoster);
+
+    event UpdateTradeContract(address indexed trade);
 
     /**
      * @dev Can be called only by request allowed services
@@ -48,6 +73,37 @@ contract FeeManager is Ownable {
      */
     modifier onlyAllowedServices(ServiceType serviceType) {
         require(serviceType == ServiceType.Host || serviceType == ServiceType.Arbitration);
+        _;
+    }
+
+
+    /**
+     * @dev Can only be called by Hoster contract
+     */
+    modifier onlyHosterContract() {
+        require(hosterContract != address(0));
+        require(msg.sender == hosterContract);
+        _;
+    }
+
+
+    /**
+     * @dev Can only be called by Trade contract
+     */
+    modifier onlyTradeContract() {
+        require(tradeContract != address(0));
+        require(msg.sender == tradeContract);
+        _;
+    }
+
+
+    /**
+     * @dev Can only be called by hoster/trade contract
+     */
+    modifier onlyHosterOrTradeContract() {
+        require(hosterContract != address(0));
+        require(tradeContract != address(0));
+        require(msg.sender == hosterContract || msg.sender == tradeContract);
         _;
     }
 
@@ -63,6 +119,32 @@ contract FeeManager is Ownable {
 
         GET = ERC20(getAddress);
         feeRate = _feeRate;
+    }
+
+
+    /**
+     * @dev Update Hoster contract address
+     * @param _newHoster New hoster contract address
+     */
+    function updateHosterContract(address _newHoster) public onlyOwner returns(bool) {
+        require(_newHoster != address(0));
+
+        hosterContract = _newHoster;
+        UpdateHosterContract(_newHoster);
+        return true;
+    }
+
+
+    /**
+     * @dev Update trade contract address
+     * @param _newTrade New trade contract address
+     */
+    function updateTradeContract(address _newTrade) public onlyOwner returns(bool) {
+        require(_newTrade != address(0));
+
+        tradeContract = _newTrade;
+        UpdateTradeContract(_newTrade);
+        return true;
     }
 
 
@@ -100,6 +182,7 @@ contract FeeManager is Ownable {
     )
         public
         onlyAllowedServices(serviceType)
+        onlyHosterOrTradeContract
         returns(bool)
     {
         // Simple check
@@ -117,6 +200,48 @@ contract FeeManager is Ownable {
 
         FeePayed(orderID, serviceType, fee, serviceNodes);
 
+        return true;
+    }
+
+
+    /**
+     * @dev User should pay deposit for being a hoster
+     * @dev Deposit will be sent back when turn back to noraml user
+     * @param user User who will be a hoster
+     * @param deposit Deposit should be payed by user
+     */
+    function payDeposit(address user, uint256 deposit) public onlyHosterContract returns(bool) {
+        // Simple check
+        require(user != address(0));
+        require(deposit > 0);
+        // User should not be a hoster before
+        require(depositPayed[user] == 0);
+
+        // Will assert when user doesn't have/approve enough deposit for contract
+        assert(GET.transferFrom(user, this, deposit));
+
+        // Record deposit payed by user
+        depositPayed[user] = deposit;
+
+        PayDeposit(user, deposit);
+        return true;
+    }
+
+
+    /**
+     * @dev User will withdraw deposit when turn back to a normal user
+     * @param user User who turn back to a normal user
+     */
+    function withDrawDeposit(address user) public onlyHosterContract returns(bool){
+        // Simple check
+        require(user != address(0));
+        require(depositPayed[user] > 0);
+
+        // Transfer deposit back to user
+        assert(GET.transfer(user, depositPayed[user]));
+        WithDrawDeposit(user, depositPayed[user]);
+
+        depositPayed[user] = 0;
         return true;
     }
 
@@ -144,7 +269,7 @@ contract FeeManager is Ownable {
         uint256 fee = shouldPay.div(serviceNodes.length);
         // Transfer fee to every service user/node
         for (uint i = 0; i < serviceNodes.length; i++) {
-            GET.transferFrom(user, serviceNodes[i], fee);
+            assert(GET.transferFrom(user, serviceNodes[i], fee));
         }
 
         return true;
@@ -172,7 +297,7 @@ contract FeeManager is Ownable {
         uint256 fee = shouldPay.div(serviceNodes.length);
         // Transfer fee to every service user/node
         for (uint i = 0; i < serviceNodes.length; i++) {
-            GET.transferFrom(user, serviceNodes[i], fee);
+            assert(GET.transferFrom(user, serviceNodes[i], fee));
         }
 
         return true;

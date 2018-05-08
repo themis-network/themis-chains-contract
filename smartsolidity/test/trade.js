@@ -4,6 +4,9 @@ const GET = artifacts.require("./GEToken");
 const FeeManager = artifacts.require("./FeeManager");
 const Trade = artifacts.require("Trade");
 const Vss = artifacts.require("Vss");
+const Hoster = artifacts.require("Hoster");
+
+const NORMAL_USER = 0;
 
 contract("Trade test", function (accounts) {
 
@@ -13,6 +16,13 @@ contract("Trade test", function (accounts) {
         this.FeeManagerIns = await FeeManager.new(this.GETIns.address, this.feeRate);
         this.VssIns = await Vss.new();
         this.TradeIns = await Trade.new(this.FeeManagerIns.address, this.VssIns.address);
+        this.HosterIns = await Hoster.new(this.FeeManagerIns.address);
+
+        // Set Hoster/trade contract address
+        await this.FeeManagerIns.updateHosterContract(this.HosterIns.address);
+        await this.FeeManagerIns.updateTradeContract(this.TradeIns.address);
+
+        await this.TradeIns.updateHosterContract(this.HosterIns.address);
     });
 
 
@@ -21,7 +31,14 @@ contract("Trade test", function (accounts) {
         const seller = accounts[2];
         const orderID = 1;
 
-        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller);
+        const newUser = buyer;
+        const fame = 0;
+        const publicKey = "adfsfs";
+        await this.HosterIns.addUser(newUser, fame, publicKey, NORMAL_USER);
+        let isThemisUser = await this.HosterIns.isThemisUser(newUser);
+        assert.equal(isThemisUser, true, "should be right added to themis user");
+
+        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller, {from: buyer});
         let actualBuyer = await this.TradeIns.getBuyer(orderID);
         assert.equal(actualBuyer, buyer, "buyer should be right set");
 
@@ -31,6 +48,7 @@ contract("Trade test", function (accounts) {
 
 
     it("can not create two order with same orderID", async function() {
+        // buyer is added to themis user before
         const buyer = accounts[1];
         const seller = accounts[2];
         const orderID = 1;
@@ -45,7 +63,7 @@ contract("Trade test", function (accounts) {
         const others = accounts[3];
         const orderID = 2;
 
-        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller);
+        await this.TradeIns.createNewTradeOrder(orderID, buyer, seller, {from: buyer});
 
         // Only buyer can upload seller's encrypted shard
         const sellerEncryptedShard_1 = "asbdsdfbheg34";

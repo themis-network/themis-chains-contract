@@ -247,6 +247,9 @@ contract Hoster is ThemisUser {
         // Should call UpdateNormalUserToHoster when a address is themis user before
         require(!super.isThemisUser(_id));
 
+        // Pay deposit
+        assert(feeManager.payDeposit(_id, _deposit));
+
         bool success;
         uint256 position;
         bool direction;
@@ -284,9 +287,8 @@ contract Hoster is ThemisUser {
     {
         // Only themis user can be updated to hoster
         require(super.isThemisUser(_id));
-        // TODO check number of user's GET Token, transfer from to fee manager
-        // TODO Deposit will send back to user when he/she don't want to be hoster any more
-        // TODO Deposit will be spent as a punishment when hoster do some bad behave
+        // Pay deposit
+        assert(feeManager.payDeposit(_id, _deposit));
 
         bool success;
         uint256 position;
@@ -316,6 +318,9 @@ contract Hoster is ThemisUser {
         // Simple check
         require(_id != address(0));
         require(idIndex[_id] != 0);
+
+        // With draw deposit
+        assert(feeManager.withDrawDeposit(_id));
 
         // Set all info to zero/init
         sortedHosterIndex.remove(idIndex[_id]);
@@ -407,6 +412,7 @@ contract Hoster is ThemisUser {
 
             // Pay Fee
             assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, resultList));
+            return resultList;
         } else {
             GetThemisHosters(_orderID, msg.sender, hostersList);
 

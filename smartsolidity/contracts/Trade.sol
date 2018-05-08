@@ -4,6 +4,7 @@ import "./Ownable.sol";
 import "./librarys/strings.sol";
 import "./FeeManager.sol";
 import "./Vss.sol";
+import "./User.sol";
 
 contract Trade is Ownable {
 
@@ -16,6 +17,8 @@ contract Trade is Ownable {
     FeeManager feeManager;
     // Contract validate encrypted shard, recover buyer/seller's private key from shard
     Vss vss;
+    // Hoster contract
+    Hoster hosterContract;
 
     struct TradeOrder {
 
@@ -121,6 +124,14 @@ contract Trade is Ownable {
     }
 
 
+    // Function can only be called by ThemisUser
+    modifier onlyThemisUser() {
+        require(hosterContract != address(0));
+        require(hosterContract.isThemisUser(msg.sender));
+        _;
+    }
+
+
     // Init with feeManager and vss
     function Trade(address _feeManager, address _vss) public {
         require(_feeManager != address(0));
@@ -128,6 +139,15 @@ contract Trade is Ownable {
 
         feeManager = FeeManager(_feeManager);
         vss = Vss(_vss);
+    }
+
+
+    // Update hoster contract address
+    function updateHosterContract(address _hoster) public onlyOwner returns(bool) {
+        require(_hoster != address(0));
+
+        hosterContract = Hoster(_hoster);
+        return true;
     }
 
 
@@ -146,7 +166,7 @@ contract Trade is Ownable {
         address _seller
     )
         public
-        onlyOwner
+        onlyThemisUser
         returns(bool)
     {
         // Ensure orderID haven't been used before
@@ -177,8 +197,8 @@ contract Trade is Ownable {
         onlySeller(_orderID)
         returns(bool)
     {
-        // Pay arbitraion fee
-        feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID);
+        // Pay arbitration fee
+        assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
         return uploadEncryptedShard(_orderID, UpdateTo.Buyer, _shard, _hosterID);
     }
 
@@ -198,8 +218,8 @@ contract Trade is Ownable {
         onlyBuyer(_orderID)
         returns(bool)
     {
-        // Pay arbitraion fee
-        feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID);
+        // Pay arbitration fee
+        assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
         return uploadEncryptedShard(_orderID, UpdateTo.Seller, _shard, _hosterID);
     }
 
