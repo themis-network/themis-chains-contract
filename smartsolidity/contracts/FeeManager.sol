@@ -130,7 +130,7 @@ contract FeeManager is Ownable {
         require(_newHoster != address(0));
 
         hosterContract = _newHoster;
-        UpdateHosterContract(_newHoster);
+        emit UpdateHosterContract(_newHoster);
         return true;
     }
 
@@ -143,7 +143,8 @@ contract FeeManager is Ownable {
         require(_newTrade != address(0));
 
         tradeContract = _newTrade;
-        UpdateTradeContract(_newTrade);
+
+        emit UpdateTradeContract(_newTrade);
         return true;
     }
 
@@ -198,7 +199,7 @@ contract FeeManager is Ownable {
             payForArbitrationService(orderID, user, serviceNodes, fee);
         }
 
-        FeePayed(orderID, serviceType, fee, serviceNodes);
+        emit FeePayed(orderID, serviceType, fee, serviceNodes);
 
         return true;
     }
@@ -223,7 +224,7 @@ contract FeeManager is Ownable {
         // Record deposit payed by user
         depositPayed[user] = deposit;
 
-        PayDeposit(user, deposit);
+        emit PayDeposit(user, deposit);
         return true;
     }
 
@@ -239,10 +240,47 @@ contract FeeManager is Ownable {
 
         // Transfer deposit back to user
         assert(GET.transfer(user, depositPayed[user]));
-        WithDrawDeposit(user, depositPayed[user]);
+        emit WithDrawDeposit(user, depositPayed[user]);
 
         depositPayed[user] = 0;
         return true;
+    }
+
+
+    /**
+     * @dev User will withdraw/pay deposit when update deposit info
+     * @param _newDeposit New deposit hoster want to claim
+     */
+    function updateToNewDepsoit(address user, uint256 _newDeposit) public onlyHosterContract returns(bool) {
+        // Simple check
+        require(user != address(0));
+        require(_newDeposit > 0);
+
+        uint256 oriDeposit = depositPayed[user];
+        if (_newDeposit > oriDeposit){
+            // Should pay deposit
+            // Will assert when user doesn't have/approve enough deposit for contract
+            assert(GET.transferFrom(user, this, _newDeposit.sub(oriDeposit)));
+
+            // Record deposit payed by user
+            depositPayed[user] = _newDeposit;
+
+            emit PayDeposit(user, _newDeposit.sub(oriDeposit));
+            return true;
+        }
+
+        if (_newDeposit < oriDeposit) {
+            // Should with draw deposit
+            // Transfer deposit back to user
+            assert(GET.transfer(user, oriDeposit.sub(_newDeposit)));
+            // Record deposit payed by user
+            depositPayed[user] = _newDeposit;
+
+            emit WithDrawDeposit(user, oriDeposit.sub(_newDeposit));
+            return true;
+        }
+
+        return false;
     }
 
 

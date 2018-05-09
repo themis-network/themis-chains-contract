@@ -13,6 +13,8 @@ contract Trade is Ownable {
     // Separate to split a string
     string constant SEPARATE = ",";
 
+    uint256 public maxHosterNum = 11;
+
     // Contract controls fee payment of host/arbitraion
     FeeManager feeManager;
     // Contract validate encrypted shard, recover buyer/seller's private key from shard
@@ -29,8 +31,7 @@ contract Trade is Ownable {
         address seller;
 
         // Hoster whose public key used to encrypt buyer/seller's shard
-        // Hoster type => hoster ids
-        mapping(uint256 => address[]) hosters;
+        address[] hosters;
 
         // Hosted buyer/seller's encrypted shard
         // Hoster's id(address) => user type => info
@@ -72,7 +73,8 @@ contract Trade is Ownable {
     event CreateOrder(
         uint256 orderID, 
         address indexed buyer, 
-        address indexed seller
+        address indexed seller,
+        address[] hosters
     );
 
     event UploadEncryptedShard(
@@ -110,16 +112,9 @@ contract Trade is Ownable {
     }
 
 
-    // Function can only be called by buyer's shard hoster
-    modifier onlyBuyerHoster(uint256 _orderID) {
-        require(isUserHoster(_orderID, UpdateTo.Buyer));
-        _;
-    }
-
-
-    // Function can only be called by buyer's shard hoster
-    modifier onlySellerHoster(uint256 _orderID) {
-        require(isUserHoster(_orderID, UpdateTo.Seller));
+    // Function can only be called by shard hoster
+    modifier onlyHoster(uint256 _orderID) {
+        require(isUserHoster(_orderID));
         _;
     }
 
@@ -151,19 +146,25 @@ contract Trade is Ownable {
     }
 
 
-    // TODO workflow may be changed to this situation ?:
-    // TODO 1. buyer create/upload a new order
-    // TODO 2. seller confirm info on chain
+    // Update max number of hosers a order can have
+    function updateMaxHosterNum(uint256 _maxHosterNum) public onlyOwner returns(bool) {
+        require(_maxHosterNum >= 3);
+
+        maxHosterNum = _maxHosterNum;
+        return true;
+    }
+
+
     /**
      * @dev Create a new order
      * @param _orderID ID of a order
-     * @param _buyer Buyer of a order
      * @param _seller Seller of a order
+     * @param _hosterNum Number of hosters will be used for host/encrypt
      */
     function createNewTradeOrder(
         uint256 _orderID,
-        address _buyer,
-        address _seller
+        address _seller,
+        uint256 _hosterNum
     )
         public
         onlyThemisUser
@@ -172,12 +173,31 @@ contract Trade is Ownable {
         // Ensure orderID haven't been used before
         require(order[_orderID].buyer == address(0));
         require(order[_orderID].seller == address(0));
-        require(_buyer != address(0));
-        require(_seller != address(0));
 
-        order[_orderID].buyer = _buyer;
+        require(_seller != address(0));
+        // _hosterNum should be a even number, support by shamir
+        require(_hosterNum % 2 != 0);
+        require(_hosterNum < maxHosterNum);
+
+        order[_orderID].buyer = msg.sender;
         order[_orderID].seller = _seller;
-        CreateOrder(_orderID, _buyer, _seller);
+
+        // Get hosters
+        address[] memory hosters = hosterContract.getHosters(_hosterNum);
+
+        // Hoster.length should be even
+        // Occur when hosterNum bigger than length of all hosters
+        if (hosters.length > 0 && hosters.length % 2 == 0) {
+            address[] memory res = getPreviousItems(hosters, hosters.length - 1);
+            order[_orderID].hosters = res;
+            assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, res));
+            emit CreateOrder(_orderID, msg.sender, _seller, res);
+            return true;
+        }
+        order[_orderID].hosters = hosters;
+
+        assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, hosters));
+        emit CreateOrder(_orderID, msg.sender, _seller, hosters);
         return true;
     }
 
@@ -186,20 +206,19 @@ contract Trade is Ownable {
      * @dev Seller upload buyer's encrypted shard, which treated as requesting arbitration
      * @param _orderID ID of order
      * @param _shard Encrypted shard of buyer's private key
-     * @param _hosterID Hoster list used to encrypt buyer's private key
      */
     function uploadBuyerShardFromSeller(
         uint256 _orderID,
-        string _shard,
-        address[] _hosterID
+        string _shard
     )
         public
         onlySeller(_orderID)
         returns(bool)
     {
         // Pay arbitration fee
+        address[] memory _hosterID = order[_orderID].hosters;
         assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
-        return uploadEncryptedShard(_orderID, UpdateTo.Buyer, _shard, _hosterID);
+        return uploadEncryptedShard(_orderID, UpdateTo.Buyer, _shard);
     }
 
 
@@ -207,20 +226,19 @@ contract Trade is Ownable {
      * @dev Seller upload buyer's encrypted shard, which treated as requesting arbitration
      * @param _orderID ID of order
      * @param _shard Encrypted shard of buyer's private key
-     * @param _hosterID Hoster list used to encrypt buyer's private key
      */
      function uploadSellerShardFromBuyer(
         uint256 _orderID,
-        string _shard,
-        address[] _hosterID
+        string _shard
     )
         public
         onlyBuyer(_orderID)
         returns(bool)
     {
         // Pay arbitration fee
+        address[] memory _hosterID = order[_orderID].hosters;
         assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
-        return uploadEncryptedShard(_orderID, UpdateTo.Seller, _shard, _hosterID);
+        return uploadEncryptedShard(_orderID, UpdateTo.Seller, _shard);
     }
 
 
@@ -277,20 +295,11 @@ contract Trade is Ownable {
 
 
     /**
-     * @dev Get buyer's hosters
+     * @dev Get hosters
      * @param _orderID ID of order
      */
-    function getBuyerShardHosters(uint256 _orderID) public view returns(address[]) {
-        return getHosters(_orderID, UpdateTo.Buyer);
-    }
-
-
-    /**
-     * @dev Get seller's hosters
-     * @param _orderID ID of order
-     */
-    function getSellerShardHosters(uint256 _orderID) public view returns(address[]) {
-        return getHosters(_orderID, UpdateTo.Seller);
+    function getShardHosters(uint256 _orderID) public view returns(address[]) {
+        return order[_orderID].hosters;
     }
 
 
@@ -340,7 +349,7 @@ contract Trade is Ownable {
         string _decryptedShard
     )
         public
-        onlyBuyerHoster(_orderID)
+        onlyHoster(_orderID)
         returns(bool)
     {
         // Upload buyer's shard means seller has win the conflict
@@ -363,7 +372,7 @@ contract Trade is Ownable {
         string _decryptedShard
     )
         public
-        onlySellerHoster(_orderID)
+        onlyHoster(_orderID)
         returns(bool)
     {
         // Upload seller's shard means buyer has win the conflict
@@ -415,7 +424,7 @@ contract Trade is Ownable {
             }
         }
 
-        UploadDecryptedShards(_orderID, msg.sender, _userType, _decryptedShard);
+        emit UploadDecryptedShards(_orderID, msg.sender, _userType, _decryptedShard);
         return true;
     }
 
@@ -423,20 +432,17 @@ contract Trade is Ownable {
     /**
      * @dev Validate a hoster of a user
      * @param _orderID ID of order
-     * @param _userType Type of user
      */
     function isUserHoster(
-        uint256 _orderID, 
-        UpdateTo _userType
-    ) 
+        uint256 _orderID
+    )
         public 
         view 
         returns(bool) 
     {
         bool isHoster = false;
-        uint256 storageType = uint256(_userType);
-        for (uint256 i = 0; i < order[_orderID].hosters[storageType].length; i++) {
-            if (order[_orderID].hosters[storageType][i] == msg.sender) {
+        for (uint256 i = 0; i < order[_orderID].hosters.length; i++) {
+            if (order[_orderID].hosters[i] == msg.sender) {
                 isHoster = true;
                 break;
             }
@@ -450,13 +456,11 @@ contract Trade is Ownable {
      * @param _orderID ID of order
      * @param _updateType Type of whose encrypted shard will be updated
      * @param _encryptedShard Encrypted shard of private key
-     * @param _hosters Hosters used to encrypt shard of private key
      */
     function uploadEncryptedShard(
         uint256 _orderID,
         UpdateTo _updateType,
-        string _encryptedShard,
-        address[] _hosters
+        string _encryptedShard
     )
         internal
         returns(bool)
@@ -464,21 +468,22 @@ contract Trade is Ownable {
         var delim = SEPARATE.toSlice();
         var s = _encryptedShard.toSlice();
         var shardArrayLength = s.count(delim) + 1;
+
         // _shard like "encryptedShard,encryptedShard,......"
         // it's length should be same with _hosterID
+        address[] memory _hosters = order[_orderID].hosters;
         require(shardArrayLength == _hosters.length);
 
         var storageType = uint256(_updateType);
 
         // Will cover value before if this is not the first time
-        order[_orderID].hosters[storageType] = _hosters;
         for (uint256 i = 0; i < shardArrayLength; i++) {
             var tmpShard = s.split(delim).toString();
 
             order[_orderID].hosterShard[_hosters[i]][storageType].shard = tmpShard;
         }
 
-        UploadEncryptedShard(_orderID, msg.sender, _updateType, _encryptedShard);
+        emit UploadEncryptedShard(_orderID, msg.sender, _updateType, _encryptedShard);
         return true;
     }
 
@@ -503,16 +508,6 @@ contract Trade is Ownable {
 
 
     /**
-     * @dev Get buyer/seller's hosters whose public key used to encrypt shard
-     * @param _orderID ID of order
-     * @param _userType Type of user
-     */
-    function getHosters(uint256 _orderID, UpdateTo _userType) internal view returns(address[]) {
-        return order[_orderID].hosters[uint256(_userType)];
-    }
-
-
-    /**
      * @dev Get decrypted shard which is decrypted by hoster
      * @param _orderID ID of order
      * @param _userType Type of user whose decrypted shard want to get
@@ -528,5 +523,21 @@ contract Trade is Ownable {
         returns(string)
     {
         return order[_orderID].decryptedShard[uint256(_userType)][_hoster].shard;
+    }
+
+
+    /**
+     * @dev Return previous item of a address array
+     * @param _ori Original address array
+     */
+    function getPreviousItems(address[] _ori, uint256 _num) internal pure returns(address[]) {
+        require(_num <= _ori.length);
+
+        address[] memory res = new address[](_num);
+        for (uint256 i = 0; i < _num; i++) {
+            res[i] = _ori[i];
+        }
+
+        return res;
     }
 }

@@ -7,7 +7,6 @@ const Vss = artifacts.require("Vss");
 const Hoster = artifacts.require("Hoster");
 
 const NORMAL_USER = 0;
-const HOSTER_USER = 1;
 
 const BigNumber = web3.BigNumber;
 const should = require('chai')
@@ -125,9 +124,7 @@ contract("Hoster test", function(accounts){
 
     
     describe("Get hoster service Test", function () {
-        it("should right get hoster sort by fame and depoist, and spend GET tokens", async function() {
-            const orderID = 1;
-
+        it("should right get hoster sort by fame and depoist", async function() {
             const should_be_3 = accounts[1];
 
             const should_be_2 = accounts[3];
@@ -158,22 +155,14 @@ contract("Hoster test", function(accounts){
             await this.HosterIns.addHoster(should_be_1, user5Fame, user5Deposit, user5PublicKey);
 
             // Check node list is sort by fame, deposit or not
-            await assertRevert(this.HosterIns.getHosters(orderID, 3));
 
             // Normal user get hoster'id
             const normalUser = accounts[7];
             const normalFame = 1;
             const publicKey = "fsafwe";
             await this.HosterIns.addUser(normalUser, normalFame, publicKey, NORMAL_USER);
-            // Ensure normal user has enough get tokens
-            await this.GETIns.transfer(normalUser, web3.toWei(100, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(50, "ether"), {from: normalUser});
 
-            const allow = await this.GETIns.allowance(normalUser, this.FeeManagerIns.address);
-            assert.equal(allow, web3.toWei(50, "ether"), "should allow 50 Get");
-
-            let { logs } = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
+            let { logs } = await this.HosterIns.getHosters(4, {from: normalUser});
             const log = logs.find(e => e.event === "GetThemisHosters");
             should.exist(log);
             let acutal_1 = log.args.hosters[0];
@@ -187,20 +176,9 @@ contract("Hoster test", function(accounts){
             acutal_3.should.equal(should_be_3);
             acutal_4.should.equal(should_be_4);
 
-            // Hoster should get Tokens
-            let acutal_1_balance = await this.GETIns.balanceOf(acutal_1);
-            let acutal_2_balance = await this.GETIns.balanceOf(acutal_2);
-            let acutal_3_balance = await this.GETIns.balanceOf(acutal_3);
-            let acutal_4_balance = await this.GETIns.balanceOf(acutal_4);
-
-            acutal_1_balance.should.be.bignumber.equal(this.feeRate);
-            acutal_2_balance.should.be.bignumber.equal(this.feeRate);
-            acutal_3_balance.should.be.bignumber.equal(this.feeRate);
-            acutal_4_balance.should.be.bignumber.equal(this.feeRate);
-
             // number of nodes/hosters want to get is bigger than nodes/hoster's length
             // just return all nodes
-            let logs_all = await this.HosterIns.getHosters(orderID, 5, {from: normalUser});
+            let logs_all = await this.HosterIns.getHosters(5, {from: normalUser});
             const log_all = logs_all.logs.find(e => e.event === "GetThemisHosters");
             should.exist(log_all);
             log_all.args.hosters.length.should.equal(4);
@@ -223,7 +201,7 @@ contract("Hoster test", function(accounts){
             const new_should_be_4 = accounts[4];
 
             // const normalUser = accounts[7];
-            let { logs } = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
+            let { logs } = await this.HosterIns.getHosters(4, {from: normalUser});
             const log = logs.find(e => e.event === "GetThemisHosters");
             should.exist(log);
             let acutal_1 = log.args.hosters[0];
@@ -243,7 +221,7 @@ contract("Hoster test", function(accounts){
             await this.HosterIns.updateUserDeposit(newDeposit, {from: should_be_1});
 
             // const normalUser = accounts[7];
-            let tx = await this.HosterIns.getHosters(orderID, 4, {from: normalUser});
+            let tx = await this.HosterIns.getHosters(4, {from: normalUser});
             const new_log = tx.logs.find(e => e.event === "GetThemisHosters");
             should.exist(new_log);
             acutal_1 = new_log.args.hosters[0];
