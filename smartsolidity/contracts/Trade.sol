@@ -16,11 +16,11 @@ contract Trade is Ownable {
     uint256 public maxHosterNum = 11;
 
     // Contract controls fee payment of host/arbitraion
-    FeeManager feeManager;
+    FeeManager public feeManager;
     // Contract validate encrypted shard, recover buyer/seller's private key from shard
-    Vss vss;
+    Vss public vss;
     // Hoster contract
-    Hoster hosterContract;
+    Hoster public hosterContract;
 
     struct TradeOrder {
 

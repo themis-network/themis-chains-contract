@@ -47,10 +47,10 @@ contract FeeManager is Ownable {
     mapping(address => uint256) depositPayed;
 
     // Hoster contract
-    address hosterContract;
+    address public hosterContract;
 
     // Trade contract
-    address tradeContract;
+    address public tradeContract;
 
     event FeePayed(
         uint256 orderID,
