@@ -2,6 +2,7 @@ require('babel-register')({
     // Important to have zeppelin-solidity working on
     ignore: /node_modules\/(?!zeppelin-solidity)/
 });
+
 require('babel-polyfill');
 
 module.exports = {
@@ -13,11 +14,12 @@ module.exports = {
       gasLimit: 4500000,
     },
     testNet: {
-      network_id: "20",
-      port: 8545,
-      host: "192.168.1.205",
+      network_id: "1111",
+      port: 8555,
+      host: "192.168.1.213",
       // set this can change gas used
-      gas: 4000000,
+      gas: 4712388,
+      gasPrice: 0x00,
       // can use truffle console --network testNet
       // web3.eth.getBlock("latest").gasLimit to set gasLimit
       gasLimit: 4812388,

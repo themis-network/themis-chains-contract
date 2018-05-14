@@ -71,7 +71,7 @@ contract ThemisUser is Ownable {
         users[_id].publicKey = _publicKey;
         users[_id].userType = _userType;
 
-        AddThemisUser(_id);
+        emit AddThemisUser(_id);
         return true;
     }
 
@@ -102,7 +102,7 @@ contract ThemisUser is Ownable {
         users[_id].publicKey = _newPublicKey;
         users[_id].userType = _userType;
 
-        UpdateThemisUser(_id);
+        emit UpdateThemisUser(_id);
         return true;
     }
 
@@ -115,7 +115,7 @@ contract ThemisUser is Ownable {
         // Delete user
         delete(users[_id]);
 
-        RemoveThemisUser(_id);
+        emit RemoveThemisUser(_id);
         return true;
     }
 
@@ -162,8 +162,7 @@ contract Hoster is ThemisUser {
 
     event ChangeToThemisHoster(address indexed id);
 
-    event GetThemisHosters(uint256 orderID, address indexed who, address[] hosters);
-
+    event GetThemisHosters(address[] hosters);
 
     /**
      * @dev Only hoster can call this method
@@ -247,6 +246,9 @@ contract Hoster is ThemisUser {
         // Should call UpdateNormalUserToHoster when a address is themis user before
         require(!super.isThemisUser(_id));
 
+        // Pay deposit
+        assert(feeManager.payDeposit(_id, _deposit));
+
         bool success;
         uint256 position;
         bool direction;
@@ -264,7 +266,7 @@ contract Hoster is ThemisUser {
         // Add/Update user to themis user contract
         super.addUser(_id, _fame, _publicKey, UserType.Hoster);
 
-        AddThemisHoster(_id);
+        emit AddThemisHoster(_id);
         return true;
     }
 
@@ -284,9 +286,8 @@ contract Hoster is ThemisUser {
     {
         // Only themis user can be updated to hoster
         require(super.isThemisUser(_id));
-        // TODO check number of user's GET Token, transfer from to fee manager
-        // TODO Deposit will send back to user when he/she don't want to be hoster any more
-        // TODO Deposit will be spent as a punishment when hoster do some bad behave
+        // Pay deposit
+        assert(feeManager.payDeposit(_id, _deposit));
 
         bool success;
         uint256 position;
@@ -303,7 +304,7 @@ contract Hoster is ThemisUser {
         idIndex[_id] = hoster.length - 1;
 
         super.updateUser(_id, users[_id].fame, users[_id].publicKey, UserType.Hoster);
-        ChangeToThemisHoster(_id);
+        emit ChangeToThemisHoster(_id);
         return true;
     }
 
@@ -317,13 +318,17 @@ contract Hoster is ThemisUser {
         require(_id != address(0));
         require(idIndex[_id] != 0);
 
+        // With draw deposit
+        assert(feeManager.withDrawDeposit(_id));
+
         // Set all info to zero/init
         sortedHosterIndex.remove(idIndex[_id]);
         hoster[idIndex[_id]] = HosterInfo(address(0), 0);
         idIndex[_id] = 0;
 
         super.updateUser(_id, users[_id].fame, users[_id].publicKey, UserType.Normal);
-        RemoveThemisHoster(_id);
+
+        emit RemoveThemisHoster(_id);
         return true;
     }
 
@@ -357,6 +362,10 @@ contract Hoster is ThemisUser {
         address _id = msg.sender;
         require(idIndex[_id] != 0);
 
+        // Update deposit payed by hoster
+        // Will throw when _newDeposit is same with original deposit
+        assert(feeManager.updateToNewDepsoit(msg.sender, _newDeposit));
+
         require(updateUserFameOrDeposit(_id, users[_id].fame, _newDeposit) == true);
 
         super.updateUser(_id, users[_id].fame, users[_id].publicKey, users[_id].userType);
@@ -366,11 +375,11 @@ contract Hoster is ThemisUser {
 
 
     /**
-     * @dev Return hoster array ordered by fame, deposit, which will cost GET Token
-     * @param _orderID ID of a order
+     * @dev Return hoster array ordered by fame, deposit
+     * @dev Log result
      * @param _num Number of hoster want to get
      */
-    function getHosters(uint256 _orderID, uint256 _num) public onlyThemisUser returns(address[]) {
+    function getHosters(uint256 _num) public returns(address[]) {
         require(_num > 0);
 
         // Get node from list sequentially
@@ -403,16 +412,12 @@ contract Hoster is ThemisUser {
                 resultList[j] = hostersList[j];
             }
 
-            GetThemisHosters(_orderID, msg.sender, resultList);
+            emit GetThemisHosters(resultList);
 
-            // Pay Fee
-            assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, resultList));
-        } else {
-            GetThemisHosters(_orderID, msg.sender, hostersList);
-
-            // Pay Fee
-            assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, hostersList));
+            return resultList;
         }
+
+        emit GetThemisHosters(hostersList);
 
         // If num is bigger than size of hoster, just return all hosters
         return hostersList;

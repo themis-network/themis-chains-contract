@@ -5,9 +5,9 @@ const FeeManager = artifacts.require("./FeeManager.sol");
 
 module.exports = (deployer) => {
     deployer.deploy(GET).then(function() {
-        const feeRate = 1;
-        deployer.deploy(FeeManager, GET.address, feeRate).then(function () {
-            deployer.deploy(Hoster, FeeManager.address);
-        });
+        const feeRate = web3.toWei(1, "ether");
+        return deployer.deploy(FeeManager, GET.address, feeRate);
+    }).then(function () {
+        return deployer.deploy(Hoster, FeeManager.address);
     });
 };
