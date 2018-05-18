@@ -141,7 +141,7 @@ contract Hoster is ThemisUser {
     bool constant PREV = false;
     bool constant NEXT = true;
 
-    FeeManager feeManager;
+    FeeManager public feeManager;
 
     struct HosterInfo {
         // Address of hoster which used as id
@@ -163,14 +163,6 @@ contract Hoster is ThemisUser {
     event ChangeToThemisHoster(address indexed id);
 
     event GetThemisHosters(address[] hosters);
-
-    /**
-     * @dev Only hoster can call this method
-     */
-    modifier onlyHoster() {
-        require(msg.sender == hoster[idIndex[msg.sender]].id);
-        _;
-    }
 
 
     /**
@@ -338,13 +330,13 @@ contract Hoster is ThemisUser {
      * @param _id ID of a hoster
      * @param _newFame New fame of a hoster
      */
-    function updateUserFame(address _id, uint256 _newFame) public onlyOwner returns(bool) {
+    function updateHosterFame(address _id, uint256 _newFame) public onlyOwner returns(bool) {
         // User should have been added before
         // The index of first node is 1, so no need to do more check
         require(idIndex[_id] != 0);
 
         uint256 oldDeposit = hoster[idIndex[_id]].deposit;
-        require(updateUserFameOrDeposit(_id, _newFame, oldDeposit) == true);
+        require(updateHosterFameOrDeposit(_id, _newFame, oldDeposit) == true);
 
         super.updateUser(_id, _newFame, users[_id].publicKey, users[_id].userType);
 
@@ -356,18 +348,16 @@ contract Hoster is ThemisUser {
      * @dev User update his/her deposit
      * @param _newDeposit New deposit of a hoster
      */
-    function updateUserDeposit(uint256 _newDeposit) public onlyHoster returns(bool) {
+    function updateHosterDeposit(address _id, uint256 _newDeposit) public onlyOwner returns(bool) {
         // User should have been added before
         // The index of first node is 1, so no need to do more check
-        address _id = msg.sender;
+        require(_id != address(0));
         require(idIndex[_id] != 0);
 
         // Update deposit payed by hoster
         // Will throw when _newDeposit is same with original deposit
-        assert(feeManager.updateToNewDepsoit(msg.sender, _newDeposit));
-
-        require(updateUserFameOrDeposit(_id, users[_id].fame, _newDeposit) == true);
-
+        assert(feeManager.updateToNewDepsoit(_id, _newDeposit));
+        require(updateHosterFameOrDeposit(_id, users[_id].fame, _newDeposit) == true);
         super.updateUser(_id, users[_id].fame, users[_id].publicKey, users[_id].userType);
 
         return true;
@@ -430,7 +420,7 @@ contract Hoster is ThemisUser {
      * @param _newFame New fame of a hoster
      * @param _newDeposit New deposit of a hoster
      */
-    function updateUserFameOrDeposit(
+    function updateHosterFameOrDeposit(
         address _id,
         uint256 _newFame,
         uint256 _newDeposit

@@ -150,9 +150,9 @@ contract("Hoster test", function(accounts){
             const user5Fame = 7;
             const user5Deposit = web3.toWei(20, "ether");
             const user5PublicKey = "asdasdff123";
-            await this.GETIns.transfer(should_be_1, web3.toWei(20, "ether"));
+            await this.GETIns.transfer(should_be_1, web3.toWei(100, "ether"));
             // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(20, "ether"), {from: should_be_1});
+            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(100, "ether"), {from: should_be_1});
             await this.HosterIns.addHoster(should_be_1, user5Fame, user5Deposit, user5PublicKey);
 
             // Check node list is sort by fame, deposit or not
@@ -186,25 +186,35 @@ contract("Hoster test", function(accounts){
         })
         
         
-        if("should right update one's fame/deposit, list position will be changed when he/she is a hoster", async function () {
+        it("should right update one's fame/deposit, list position will be changed when he/she is a hoster", async function () {
 
             // Should be the first one returned
+            // Ori fame and deposit
+            // accounts[5]: {fame:7, deposit:20GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
             const should_be_1 = accounts[5];
             const newFame = 5;
-            await this.HosterIns.updateUserFame(should_be_1, newFame);
-            let actualUser = await this.HosterIns.user.call(should_be_1);
+            await this.HosterIns.updateHosterFame(should_be_1, newFame);
+            let actualUser = await this.HosterIns.users.call(should_be_1);
             let actualFame = actualUser[1];
-            actualFame.should.equal(newFame);
+            actualFame.should.be.bignumber.equal(newFame);
 
-            const new_should_be_2 = should_be_1;
-            const new_should_be_3 = accounts[1];
+            const new_should_be_3 = should_be_1;
+            const new_should_be_2 = accounts[1];
             const new_should_be_1 = accounts[3];
             const new_should_be_4 = accounts[4];
 
-            // const normalUser = accounts[7];
+            const normalUser = accounts[7];
             let { logs } = await this.HosterIns.getHosters(4, {from: normalUser});
             const log = logs.find(e => e.event === "GetThemisHosters");
             should.exist(log);
+            // After update: fame and deposit
+            // accounts[5]: {fame:5, deposit:20GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
             let acutal_1 = log.args.hosters[0];
             let acutal_2 = log.args.hosters[1];
             let acutal_3 = log.args.hosters[2];
@@ -217,9 +227,15 @@ contract("Hoster test", function(accounts){
             acutal_4.should.equal(new_should_be_4);
 
             // Update deposit
-            const newDeposit = 50;
+            const newDeposit = web3.toWei(60, "ether");
             // Only user self can call this function
-            await this.HosterIns.updateUserDeposit(newDeposit, {from: should_be_1});
+            await this.HosterIns.updateHosterDeposit(should_be_1, newDeposit);
+
+            // After update: fame and deposit
+            // accounts[5]: {fame:5, deposit:60GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
 
             // const normalUser = accounts[7];
             let tx = await this.HosterIns.getHosters(4, {from: normalUser});
@@ -230,11 +246,16 @@ contract("Hoster test", function(accounts){
             acutal_3 = new_log.args.hosters[2];
             acutal_4 = new_log.args.hosters[3];
 
+            let new_2_should_be_1 = accounts[3];
+            let new_2_should_be_2 = accounts[5];
+            let new_2_should_be_3 = accounts[1];
+            let new_2_should_be_4 = accounts[4];
+
             // Should sort by fame and deposit
-            acutal_1.should.equal(new_should_be_1);
-            acutal_2.should.equal(new_should_be_3);
-            acutal_3.should.equal(new_should_be_2);
-            acutal_4.should.equal(new_should_be_4);
+            acutal_1.should.equal(new_2_should_be_1);
+            acutal_2.should.equal(new_2_should_be_2);
+            acutal_3.should.equal(new_2_should_be_3);
+            acutal_4.should.equal(new_2_should_be_4);
         });
         
     })
