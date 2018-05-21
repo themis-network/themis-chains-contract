@@ -46,6 +46,9 @@ contract Trade is Ownable {
 
         // Info of judge
         JudgeInfo judgeInfo;
+
+        // Number at least to recover private key
+        uint256 N;
     }
 
     // Type of data user want to update
@@ -176,24 +179,32 @@ contract Trade is Ownable {
         require(_seller != address(0));
         // _hosterNum should be a even number, support by shamir
         require(_hosterNum % 2 != 0);
-        require(_hosterNum < maxHosterNum);
+        require(_hosterNum <= maxHosterNum);
 
-        order[_orderID].buyer = msg.sender;
+        // _seller should be themis user too
+        require(hosterContract.isThemisUser(_seller));
+
         order[_orderID].seller = _seller;
+        order[_orderID].buyer = msg.sender;
 
         // Get hosters
         address[] memory hosters = hosterContract.getHosters(_hosterNum);
+
+        // Host/arbitration need at least three hosters
+        require(hosters.length >= 3);
 
         // Hoster.length should be even
         // Occur when hosterNum bigger than length of all hosters
         if (hosters.length > 0 && hosters.length % 2 == 0) {
             address[] memory res = getPreviousItems(hosters, hosters.length - 1);
             order[_orderID].hosters = res;
+            order[_orderID].N = res.length / 2 + 1;
             assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, res));
             emit CreateOrder(_orderID, msg.sender, _seller, res);
             return true;
         }
         order[_orderID].hosters = hosters;
+        order[_orderID].N = hosters.length / 2 + 1;
 
         assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, hosters));
         emit CreateOrder(_orderID, msg.sender, _seller, hosters);
@@ -340,6 +351,7 @@ contract Trade is Ownable {
 
     /**
      * @dev Hoster upload buyer's decrypted shard
+     * @dev Hoster can only upload one's shard of buyer or seller
      * @param _orderID ID of order
      * @param _decryptedShard Decrypted shard of buyer's private key
      */
@@ -351,8 +363,6 @@ contract Trade is Ownable {
         onlyHoster(_orderID)
         returns(bool)
     {
-        // Upload buyer's shard means seller has win the conflict
-        require(order[_orderID].judgeInfo.state != WhoWin.Buyer);
         // Hoster haven't upload seller's shard
         require(order[_orderID].decryptedShard[uint256(UpdateTo.Seller)][msg.sender].shard.toSlice().empty());
 
@@ -363,6 +373,7 @@ contract Trade is Ownable {
 
     /**
      * @dev Hoster upload seller's decrypted shard
+     * @dev Hoster can only upload one's shard of buyer or seller
      * @param _orderID ID of order
      * @param _decryptedShard Decrypted shard of seller's private key
      */
@@ -374,8 +385,6 @@ contract Trade is Ownable {
         onlyHoster(_orderID)
         returns(bool)
     {
-        // Upload seller's shard means buyer has win the conflict
-        require(order[_orderID].judgeInfo.state != WhoWin.Seller);
         // Hoster haven't upload seller's shard
         require(order[_orderID].decryptedShard[uint256(UpdateTo.Buyer)][msg.sender].shard.toSlice().empty());
 
@@ -412,7 +421,7 @@ contract Trade is Ownable {
 
         // Cover private key when shards length is bigger than N
         // TODO wait for vss completed to change
-        if (order[_orderID].decryptedShardLen[storageType] >= vss.GetN()) {
+        if (order[_orderID].decryptedShardLen[storageType] >= order[_orderID].N) {
             // This mean who wins
             if (_userType == UpdateTo.Buyer) {
                 order[_orderID].judgeInfo.state = WhoWin.Seller;

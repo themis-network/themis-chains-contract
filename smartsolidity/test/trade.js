@@ -67,12 +67,18 @@ contract("Trade test", function (accounts) {
         const seller = accounts[2];
         const orderID = 1;
 
+        // Add buyer to themis user
         const newUser = buyer;
         const fame = 0;
         const publicKey = "adfsfs";
         await this.HosterIns.addUser(newUser, fame, publicKey, NORMAL_USER);
         let isThemisUser = await this.HosterIns.isThemisUser(newUser);
         assert.equal(isThemisUser, true, "should be right added to themis user");
+
+        // Add seller to themis user
+        const sellerFame = 2;
+        const sellerPublicKey = "asdfwe";
+        await this.HosterIns.addUser(seller, sellerFame, sellerPublicKey, NORMAL_USER);
 
         // User should pay GET tokens for this server
         await this.GETIns.transfer(buyer, web3.toWei(50, "ether"));
@@ -185,6 +191,8 @@ contract("Trade test", function (accounts) {
         let actual_decrypted_shard_1 = await this.TradeIns.getSellerDecryptedShard(orderID, host_1, {from: buyer});
         let actual_decrypted_shard_2 = await this.TradeIns.getSellerDecryptedShard(orderID, host_2, {from: buyer});
         let actual_decrypted_shard_3 = await this.TradeIns.getSellerDecryptedShard(orderID, host_3, {from: buyer});
+
+        console.log(actual_decrypted_shard_1);
 
         actual_decrypted_shard_1.should.equal(decrypted_shard_1);
         actual_decrypted_shard_2.should.equal(decrypted_shard_2);
