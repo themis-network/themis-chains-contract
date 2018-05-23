@@ -170,6 +170,7 @@ contract Trade is Ownable {
         uint256 _hosterNum
     )
         public
+        payable
         onlyThemisUser
         returns(bool)
     {
@@ -199,14 +200,15 @@ contract Trade is Ownable {
             address[] memory res = getPreviousItems(hosters, hosters.length - 1);
             order[_orderID].hosters = res;
             order[_orderID].N = res.length / 2 + 1;
-            assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, res));
+            assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getHostServiceType(), msg.sender, res));
             emit CreateOrder(_orderID, msg.sender, _seller, res);
             return true;
         }
+
         order[_orderID].hosters = hosters;
         order[_orderID].N = hosters.length / 2 + 1;
 
-        assert(feeManager.payFee(_orderID, feeManager.getHostServiceType(), msg.sender, hosters));
+        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getHostServiceType(), msg.sender, hosters));
         emit CreateOrder(_orderID, msg.sender, _seller, hosters);
         return true;
     }
@@ -222,12 +224,13 @@ contract Trade is Ownable {
         string _shard
     )
         public
+        payable
         onlySeller(_orderID)
         returns(bool)
     {
         // Pay arbitration fee
         address[] memory _hosterID = order[_orderID].hosters;
-        assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
+        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
         return uploadEncryptedShard(_orderID, UpdateTo.Buyer, _shard);
     }
 
@@ -242,12 +245,13 @@ contract Trade is Ownable {
         string _shard
     )
         public
+        payable
         onlyBuyer(_orderID)
         returns(bool)
     {
         // Pay arbitration fee
         address[] memory _hosterID = order[_orderID].hosters;
-        assert(feeManager.payFee(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
+        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
         return uploadEncryptedShard(_orderID, UpdateTo.Seller, _shard);
     }
 

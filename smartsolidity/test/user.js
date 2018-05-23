@@ -1,4 +1,5 @@
 import assertRevert from "zeppelin-solidity/test/helpers/assertRevert"
+import {assertEquals} from "./help";
 
 const GET = artifacts.require("./GEToken");
 const FeeManager = artifacts.require("./FeeManager");
@@ -18,7 +19,7 @@ contract("Hoster test", function(accounts){
     before(async function () {
         this.GETIns = await GET.new();
         this.feeRate = web3.toWei(1, "ether");
-        this.FeeManagerIns = await FeeManager.new(this.GETIns.address, this.feeRate);
+        this.FeeManagerIns = await FeeManager.new();
         this.HosterIns = await Hoster.new(this.FeeManagerIns.address);
 
         this.VssIns = await Vss.new();
@@ -67,12 +68,7 @@ contract("Hoster test", function(accounts){
             const deposit = web3.toWei(50, "ether");
             const publicKey = "adfsfs";
 
-            // Ensure normal user has enough get tokens
-            await this.GETIns.transfer(hoster, web3.toWei(50, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(50, "ether"), {from: hoster});
-
-            await this.HosterIns.addHoster(hoster, fame, deposit, publicKey);
+            await this.HosterIns.addHoster(hoster, fame, publicKey, {value: deposit});
             // Will add it to themis user auto
             let isThemisUser = await this.HosterIns.isThemisUser(hoster);
             assert.equal(isThemisUser, true, "should add hoster to themis user auto when hoster is not themis user");
@@ -88,12 +84,8 @@ contract("Hoster test", function(accounts){
             await this.HosterIns.addUser(user, newFame, newPublicKey, 0);
             let isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, false, "normal user is not hoster");
-            // Ensure normal user has enough get tokens
-            await this.GETIns.transfer(user, web3.toWei(50, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(50, "ether"), {from: user});
 
-            await this.HosterIns.updateNormalUserToHoster(user, newDeposit);
+            await this.HosterIns.updateNormalUserToHoster(user, {value: newDeposit});
             isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, true, "should right update normal user to hoster");
         })
@@ -104,7 +96,7 @@ contract("Hoster test", function(accounts){
             let isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, true, "user 2 is a hoster before");
 
-            let balance_before = await this.GETIns.balanceOf(user);
+            let balance_before = await web3.eth.getBalance(user);
 
             await this.HosterIns.removeHoster(user);
             isHoster = await this.HosterIns.isHoster(user);
@@ -114,8 +106,8 @@ contract("Hoster test", function(accounts){
             assert.equal(isThemisUser, true, "user 2 should retain themis user");
 
             // Should get back his/her deposit
-            let balance_after = await this.GETIns.balanceOf(user);
-            let depositBacked = balance_after - balance_before;
+            let balance_after = await web3.eth.getBalance(user);
+            let depositBacked = balance_after.sub(balance_before);
 
             // pay 50 get tokens as deposit
             depositBacked.should.be.bignumber.equal(web3.toWei(50, "ether"));
@@ -132,28 +124,22 @@ contract("Hoster test", function(accounts){
             const user3Fame = 7;
             const user3Deposit = web3.toWei(10, "ether");
             const user3PublicKey = "asdf123";
-            await this.GETIns.transfer(should_be_2, web3.toWei(10, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(10, "ether"), {from: should_be_2});
-            await this.HosterIns.addHoster(should_be_2, user3Fame, user3Deposit, user3PublicKey);
+
+            await this.HosterIns.addHoster(should_be_2, user3Fame, user3PublicKey, {value: user3Deposit});
 
             const should_be_4 = accounts[4];
             const user4Fame = 4;
             const user4Deposit = web3.toWei(20, "ether");
             const user4PublicKey = "asdasdff123";
-            await this.GETIns.transfer(should_be_4, web3.toWei(20, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(20, "ether"), {from: should_be_4});
-            await this.HosterIns.addHoster(should_be_4, user4Fame, user4Deposit, user4PublicKey);
+
+            await this.HosterIns.addHoster(should_be_4, user4Fame, user4PublicKey, {value: user4Deposit});
 
             const should_be_1 = accounts[5];
             const user5Fame = 7;
             const user5Deposit = web3.toWei(20, "ether");
             const user5PublicKey = "asdasdff123";
-            await this.GETIns.transfer(should_be_1, web3.toWei(100, "ether"));
-            // Approve 50 GET tokens as fee
-            await this.GETIns.approve(this.FeeManagerIns.address, web3.toWei(100, "ether"), {from: should_be_1});
-            await this.HosterIns.addHoster(should_be_1, user5Fame, user5Deposit, user5PublicKey);
+
+            await this.HosterIns.addHoster(should_be_1, user5Fame, user5PublicKey, {value: user5Deposit});
 
             // Check node list is sort by fame, deposit or not
 
@@ -225,26 +211,38 @@ contract("Hoster test", function(accounts){
             acutal_2.should.equal(new_should_be_2);
             acutal_3.should.equal(new_should_be_3);
             acutal_4.should.equal(new_should_be_4);
+        });
+        
+        it("should right increase hoster' deposit, hoster's position will be changed", async function () {
 
-            // Update deposit
-            const newDeposit = web3.toWei(60, "ether");
+            const should_be_1 = accounts[5];
+            // before
+            // accounts[5]: {fame:5, deposit:20GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
+            const balanceBefore = await web3.eth.getBalance(this.FeeManagerIns.address);
+            const increaseAmount = web3.toWei(40, "ether");
+
             // Only user self can call this function
-            await this.HosterIns.updateHosterDeposit(should_be_1, newDeposit);
+            await this.HosterIns.increaseDeposit({from: should_be_1, value: increaseAmount});
 
+            const balanceAfter = await web3.eth.getBalance(this.FeeManagerIns.address);
+            assertEquals(balanceAfter.sub(balanceBefore), increaseAmount, "FeeManage contract should get GET coin of deposit");
             // After update: fame and deposit
             // accounts[5]: {fame:5, deposit:60GET}
             // accounts[1]: {fame:5, deposit:50GET}
             // accounts[3]: {fame:7, deposit:10GET}
             // accounts[4]: {fame:4, deposit:20GET}
 
-            // const normalUser = accounts[7];
+            const normalUser = accounts[7];
             let tx = await this.HosterIns.getHosters(4, {from: normalUser});
             const new_log = tx.logs.find(e => e.event === "GetThemisHosters");
             should.exist(new_log);
-            acutal_1 = new_log.args.hosters[0];
-            acutal_2 = new_log.args.hosters[1];
-            acutal_3 = new_log.args.hosters[2];
-            acutal_4 = new_log.args.hosters[3];
+            let acutal_1 = new_log.args.hosters[0];
+            let acutal_2 = new_log.args.hosters[1];
+            let acutal_3 = new_log.args.hosters[2];
+            let acutal_4 = new_log.args.hosters[3];
 
             let new_2_should_be_1 = accounts[3];
             let new_2_should_be_2 = accounts[5];
@@ -256,7 +254,49 @@ contract("Hoster test", function(accounts){
             acutal_2.should.equal(new_2_should_be_2);
             acutal_3.should.equal(new_2_should_be_3);
             acutal_4.should.equal(new_2_should_be_4);
-        });
+        })
         
+        it("should right decrease hoster's deposit, hoster's position will be changed", async function () {
+            // Before
+            // accounts[5]: {fame:5, deposit:60GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
+            const one = accounts[5];
+            const decreaseAmount = web3.toWei(13, "ether");
+
+            let balanceBefore = await web3.eth.getBalance(this.FeeManagerIns.address);
+
+            await this.HosterIns.decreaseDeposit(decreaseAmount, {from: one});
+
+            let balanceAfter = await web3.eth.getBalance(this.FeeManagerIns.address);
+            // Hoster should get back amount of get he decreasing
+            assertEquals(balanceBefore.sub(balanceAfter), decreaseAmount, "FeeManage contract should send back get coin");
+
+            const normalUser = accounts[7];
+            let tx = await this.HosterIns.getHosters(4, {from: normalUser});
+            const new_log = tx.logs.find(e => e.event === "GetThemisHosters");
+            should.exist(new_log);
+            let acutal_1 = new_log.args.hosters[0];
+            let acutal_2 = new_log.args.hosters[1];
+            let acutal_3 = new_log.args.hosters[2];
+            let acutal_4 = new_log.args.hosters[3];
+
+            // After
+            // accounts[5]: {fame:5, deposit:47GET}
+            // accounts[1]: {fame:5, deposit:50GET}
+            // accounts[3]: {fame:7, deposit:10GET}
+            // accounts[4]: {fame:4, deposit:20GET}
+            let new_2_should_be_1 = accounts[3];
+            let new_2_should_be_2 = accounts[1];
+            let new_2_should_be_3 = accounts[5];
+            let new_2_should_be_4 = accounts[4];
+
+            // Should sort by fame and deposit
+            acutal_1.should.equal(new_2_should_be_1);
+            acutal_2.should.equal(new_2_should_be_2);
+            acutal_3.should.equal(new_2_should_be_3);
+            acutal_4.should.equal(new_2_should_be_4);
+        })
     })
 });

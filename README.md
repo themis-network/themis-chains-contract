@@ -38,25 +38,26 @@ truffle test
 
 test result:
 ```bash
-  Contract: Trade test
-    ✓ should right create order and pay fee(GET) for it (158ms)
-    ✓ can not create two order with same orderID
-    ✓ only buyer/seller can upload encrypted shard(mean request artibaion service) (610ms)
-    ✓ hoster can upload buyer/seller's decrypted shard means another wins conflict (184ms)
-
   Contract: Hoster test
     Normal function test
-      ✓ should right add/update/remove normal user (85ms)
+      ✓ should right add/update/remove normal user (98ms)
     Hoster function test
-      ✓ should right add hoster (120ms)
-      ✓ should right update normal user to hoster (136ms)
-      ✓ should right remove hoster and get back deposit (90ms)
+      ✓ should right add hoster (57ms)
+      ✓ should right update normal user to hoster (160ms)
+      ✓ should right remove hoster and get back deposit (320ms)
     Get hoster service Test
-      ✓ should right get hoster sort by fame and depoist (386ms)
-      ✓ should right update one's fame/deposit, list position will be changed when he/she is a hoster (171ms)
+      ✓ should right get hoster sort by fame and depoist (236ms)
+      ✓ should right update one's fame/deposit, list position will be changed when he/she is a hoster (85ms)
+      ✓ should right increase hoster' deposit, hoster's position will be changed (310ms)
+      ✓ should right decrease hoster's deposit, hoster's position will be changed (305ms)
 
-
-  10 passing (3s)
+  Contract: Trade test
+    ✓ should right create order and pay fee(GET) for it (372ms)
+    ✓ should return actual hosters(even) when number given by buyer is bigger than number of hosters (88ms)
+    ✓ can not create two order with same orderID
+    ✓ only buyer/seller can upload encrypted shard(mean request artibaion service) (899ms)
+    ✓ hoster can upload buyer/seller's decrypted shard means another wins conflict (139ms)
+    ✓ should revert if hoster want to upload both seller and buyer's decryptedShard (54ms)
 ```
 
 

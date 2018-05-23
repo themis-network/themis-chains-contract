@@ -3,6 +3,7 @@ pragma solidity ^0.4.23;
 import "./librarys/LinkedListLib.sol";
 import "./Ownable.sol";
 import "./FeeManager.sol";
+import "./librarys/SafeMath.sol";
 
 
 contract ThemisUser is Ownable {
@@ -24,7 +25,6 @@ contract ThemisUser is Ownable {
         address id;
 
         // Fame of user
-        // TODO can it less than zero?
         uint256 fame;
 
         // Public key of user used for others to encrypt data
@@ -134,6 +134,8 @@ contract ThemisUser is Ownable {
 contract Hoster is ThemisUser {
     using LinkedListLib for LinkedListLib.LinkedList;
 
+    using SafeMath for uint256;
+
     // Index of all users sort by fame, deposit;
     LinkedListLib.LinkedList sortedHosterIndex;
 
@@ -170,6 +172,15 @@ contract Hoster is ThemisUser {
      */
     modifier onlyThemisUser() {
         require(super.isThemisUser(msg.sender));
+        _;
+    }
+
+
+    /**
+     * @dev Can be called only by hoster
+     */
+    modifier onlyHoster() {
+        require(isHoster(msg.sender));
         _;
     }
 
@@ -216,18 +227,18 @@ contract Hoster is ThemisUser {
 
     /**
      * @dev Add a new hoster who is not a themis user before
+     * @dev Owner should pay deposit for hoster(assume hoster have payed deposit to owner)
      * @param _id ID of a hoster
      * @param _fame Fame of a hoster
-     * @param _deposit Deposit of a hoster
      * @param _publicKey Public Key of hoster, which used to encrypt data
      */
     function addHoster(
         address _id,
         uint256 _fame,
-        uint256 _deposit,
         string  _publicKey
     )
         public
+        payable
         onlyOwner
         returns(bool)
     {
@@ -237,9 +248,12 @@ contract Hoster is ThemisUser {
         require(idIndex[_id] == 0);
         // Should call UpdateNormalUserToHoster when a address is themis user before
         require(!super.isThemisUser(_id));
+        require(msg.value > 0);
+
+        uint256 _deposit = msg.value;
 
         // Pay deposit
-        assert(feeManager.payDeposit(_id, _deposit));
+        feeManager.payDeposit.value(_deposit)(_id);
 
         bool success;
         uint256 position;
@@ -266,20 +280,22 @@ contract Hoster is ThemisUser {
     /**
      * @dev Update a normal user to hoster, which should apply deposit
      * @param _id ID of a hoster
-     * @param _deposit Deposit of a hoster
      */
     function updateNormalUserToHoster(
-        address _id,
-        uint256 _deposit
+        address _id
     )
         public
+        payable
         onlyOwner
         returns(bool)
     {
         // Only themis user can be updated to hoster
         require(super.isThemisUser(_id));
+        require(msg.value > 0);
+
+        uint256 _deposit = msg.value;
         // Pay deposit
-        assert(feeManager.payDeposit(_id, _deposit));
+        feeManager.payDeposit.value(_deposit)(_id);
 
         bool success;
         uint256 position;
@@ -311,7 +327,7 @@ contract Hoster is ThemisUser {
         require(idIndex[_id] != 0);
 
         // With draw deposit
-        assert(feeManager.withDrawDeposit(_id));
+        feeManager.withdrawDeposit(_id);
 
         // Set all info to zero/init
         sortedHosterIndex.remove(idIndex[_id]);
@@ -346,20 +362,30 @@ contract Hoster is ThemisUser {
 
     /**
      * @dev User update his/her deposit
-     * @param _newDeposit New deposit of a hoster
      */
-    function updateHosterDeposit(address _id, uint256 _newDeposit) public onlyOwner returns(bool) {
-        // User should have been added before
-        // The index of first node is 1, so no need to do more check
-        require(_id != address(0));
-        require(idIndex[_id] != 0);
+    function increaseDeposit() public onlyHoster payable returns(bool) {
+        require(msg.value > 0);
+        address _id = msg.sender;
 
         // Update deposit payed by hoster
         // Will throw when _newDeposit is same with original deposit
-        assert(feeManager.updateToNewDepsoit(_id, _newDeposit));
-        require(updateHosterFameOrDeposit(_id, users[_id].fame, _newDeposit) == true);
-        super.updateUser(_id, users[_id].fame, users[_id].publicKey, users[_id].userType);
+        feeManager.increaseDeposit.value(msg.value)(_id);
+        require(updateHosterFameOrDeposit(_id, users[_id].fame, hoster[idIndex[_id]].deposit.add(msg.value)) == true);
 
+        return true;
+    }
+
+
+    /**
+     * @dev Hoster decrease deposit and withdraw originalDeposit - newDeposit
+     * @param amount Amount of deposit want to decrease
+     */
+    function decreaseDeposit(uint256 amount) public payable onlyHoster returns(bool) {
+        require(amount > 0);
+        address _id = msg.sender;
+
+        feeManager.decreaseDeposit(msg.sender, amount);
+        require(updateHosterFameOrDeposit(_id, users[_id].fame, hoster[idIndex[_id]].deposit.sub(amount)) == true);
         return true;
     }
 
