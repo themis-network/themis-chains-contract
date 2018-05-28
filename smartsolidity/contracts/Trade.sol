@@ -132,7 +132,7 @@ contract OrderManageable is TradeBasic, Ownable {
      * @param orderID ID of a order
      * @param userType User type of msg.sender
      */
-        function createNewTradeOrder(uint256 orderID, UserType userType) public payable onlyThemisUser onlyValidateType(userType) returns(bool) {
+    function createNewTradeOrder(uint256 orderID, UserType userType) public payable onlyThemisUser onlyValidateType(userType) returns(bool) {
         // Ensure orderID haven't been used before
         require(order[orderID].buyer == address(0));
         require(order[orderID].seller == address(0));
