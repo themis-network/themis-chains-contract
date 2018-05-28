@@ -1,4 +1,3 @@
-package o;
 
 import java.math.BigInteger;
 import java.util.ArrayList;

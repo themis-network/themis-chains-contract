@@ -2,33 +2,34 @@ pragma solidity ^0.4.23;
 
 import "./Ownable.sol";
 import "./librarys/strings.sol";
-import "./FeeManager.sol";
-import "./Vss.sol";
 import "./User.sol";
 
-contract Trade is Ownable {
-
-    using strings for *;
-
+contract TradeBasic {
     // Separate to split a string
     string constant SEPARATE = ",";
 
-    uint256 public maxHosterNum = 11;
+    // Number of hoster will be selected
+    uint256 public hosterNumber = 5;
 
-    // Contract controls fee payment of host/arbitraion
-    FeeManager public feeManager;
-    // Contract validate encrypted shard, recover buyer/seller's private key from shard
-    Vss public vss;
     // Hoster contract
     Hoster public hosterContract;
 
+    mapping(uint256 => TradeOrder) order;
+
+    enum OrderStatus { Created, Canceled, Confirmed, SecretUploaded, Finished }
+
     struct TradeOrder {
+        // Creator
+        address creator;
 
         // Buyer of a order
         address buyer;
 
         // Seller of a order
         address seller;
+
+        // Buyer/Seller upload secret or not
+        mapping(address => bool) uploaded;
 
         // Hoster whose public key used to encrypt buyer/seller's shard
         address[] hosters;
@@ -37,88 +38,12 @@ contract Trade is Ownable {
         // Hoster's id(address) => user type => info
         mapping(address => mapping(uint256 => EncryptedShard)) hosterShard;
 
-        // Decrypted shard
-        mapping(uint256 => mapping(address => EncryptedShard)) decryptedShard;
-
-        // Record how many shard of buyer/seller have been uploaded
-        // User type => len
-        mapping(uint256 => uint256) decryptedShardLen;
-
-        // Info of judge
-        JudgeInfo judgeInfo;
-
-        // Number at least to recover private key
-        uint256 N;
+        OrderStatus status;
     }
-
-    // Type of data user want to update
-    enum UpdateTo { Buyer, Seller }
-
-    // Type of user who win the conflict
-    enum WhoWin { Init, Buyer, Seller }
 
     struct EncryptedShard {
         // Encrypted shard string
         string shard;
-    }
-
-    struct JudgeInfo {
-        // Private key recovered only when conflict occurs
-        string recoverPrivKey;
-
-        // state of this order
-        // can indicate who(user/seller) wins when conflict occurs
-        WhoWin state;
-    }
-
-    mapping(uint256 => TradeOrder) order;
-
-    event CreateOrder(
-        uint256 orderID, 
-        address indexed buyer,
-        address indexed seller,
-        address[] hosters
-    );
-
-    event UploadEncryptedShard(
-        uint256 orderID,
-        address indexed who,
-        UpdateTo userType,
-        string  shards
-    );
-
-    event RecoverPrivKey(
-        uint256 orderID,
-        UpdateTo userType,
-        string  privKey
-    );
-
-    event UploadDecryptedShards(
-        uint256 orderID,
-        address indexed hoster,
-        UpdateTo userType,
-        string  decryptedShard
-    );
-
-
-    // Function can only be called by buyer
-    modifier onlyBuyer(uint256 _orderID) {
-        require(msg.sender == order[_orderID].buyer);
-        _;
-    }
-
-
-    // Function can only be called by seller
-    modifier onlySeller(uint256 _orderID) {
-        require(msg.sender == order[_orderID].seller);
-        _;
-    }
-
-
-    // Function can only be called by shard hoster
-    modifier onlyHoster(uint256 _orderID) {
-        require(isUserHoster(_orderID));
-        _;
     }
 
 
@@ -129,332 +54,275 @@ contract Trade is Ownable {
         _;
     }
 
+    // Buyer/Seller can call
+    modifier onlyTrader(uint256 orderID) {
+        require(order[orderID].buyer == msg.sender || order[orderID].seller == msg.sender);
+        _;
+    }
+}
 
-    // Init with feeManager and vss
-    function Trade(address _feeManager, address _vss) public {
-        require(_feeManager != address(0));
-        require(_vss != address(0));
 
-        feeManager = FeeManager(_feeManager);
-        vss = Vss(_vss);
+// Update contract info
+contract InfoManageable is TradeBasic, Ownable {
+
+    event UpdateDefaultHosterNumber(uint256 newNumber);
+
+    event UpdateHosterContract(address indexed newAddress);
+
+    /**
+     * @dev Update default number of hoster used for service
+     * @param _hosterNumber Number of default hosters
+     */
+    function updateDefaultHosterNumber(uint256 _hosterNumber) public onlyOwner returns(bool) {
+        // hosterNumber should bigger than 3 and be a even number
+        require(_hosterNumber >= 3);
+        require(_hosterNumber % 2 != 0);
+
+        hosterNumber = _hosterNumber;
+        emit UpdateDefaultHosterNumber(_hosterNumber);
+        return true;
     }
 
 
-    // Update hoster contract address
+    /**
+     * @dev Update address of hoster contract
+     * @param _hoster Address of hoster contract
+     */
     function updateHosterContract(address _hoster) public onlyOwner returns(bool) {
         require(_hoster != address(0));
 
         hosterContract = Hoster(_hoster);
-        return true;
+    }
+}
+
+
+contract OrderManageable is TradeBasic, Ownable {
+
+    using strings for *;
+
+    // Type of user of a contract
+    enum UserType { Buyer, Seller }
+
+    event CreateOrder(uint256 orderID, address indexed user, UserType userType);
+
+    event CancelTrade(uint256 orderID, address indexed creator);
+
+    event ConfirmTradeOrder(uint256 orderID, address indexed user, address[] hosters);
+
+    event UploadSecret(uint256 orderID, address indexed uploader, string secrets);
+
+    event FinishOrder(uint256 orderID);
+
+    // User type should only be Buyer or Seller
+    modifier onlyValidateType(UserType userType) {
+        require(userType == UserType.Buyer || userType == UserType.Seller);
+        _;
     }
 
 
-    // Update max number of hosers a order can have
-    function updateMaxHosterNum(uint256 _maxHosterNum) public onlyOwner returns(bool) {
-        require(_maxHosterNum >= 3);
+    // Can only be called by creator
+    modifier onlyCreator(uint256 orderID) {
+        require(order[orderID].creator == msg.sender);
+        _;
+    }
 
-        maxHosterNum = _maxHosterNum;
+
+    /**
+     * @dev Buyer/Seller create a new trade order
+     * @param orderID ID of a order
+     * @param userType User type of msg.sender
+     */
+        function createNewTradeOrder(uint256 orderID, UserType userType) public payable onlyThemisUser onlyValidateType(userType) returns(bool) {
+        // Ensure orderID haven't been used before
+        require(order[orderID].buyer == address(0));
+        require(order[orderID].seller == address(0));
+
+        if (UserType.Buyer == userType) {
+            order[orderID].buyer = msg.sender;
+        }
+        if (UserType.Seller == userType) {
+            order[orderID].seller = msg.sender;
+        }
+        order[orderID].creator = msg.sender;
+        order[orderID].status = OrderStatus.Created;
+
+        // TODO Pay for hoster's
+
+        emit CreateOrder(orderID, msg.sender, userType);
         return true;
     }
 
 
     /**
-     * @dev Create a new order
-     * @param _orderID ID of a order
-     * @param _seller Seller of a order
-     * @param _hosterNum Number of hosters will be used for host/encrypt
+     * @dev Creator cancel the order
+     * @param orderID ID of order
      */
-    function createNewTradeOrder(
-        uint256 _orderID,
-        address _seller,
-        uint256 _hosterNum
-    )
-        public
-        payable
-        onlyThemisUser
-        returns(bool)
-    {
-        // Ensure orderID haven't been used before
-        require(order[_orderID].buyer == address(0));
-        require(order[_orderID].seller == address(0));
-        require(_seller != address(0));
-        // _hosterNum should be a even number, support by shamir
-        require(_hosterNum % 2 != 0);
-        require(_hosterNum <= maxHosterNum);
+    function cancelTrade(uint256 orderID) public onlyCreator(orderID) returns(bool) {
+        // Ensure order is created
+        require(order[orderID].status == OrderStatus.Created);
 
-        // _seller should be themis user too
-        require(hosterContract.isThemisUser(_seller));
+        order[orderID].status = OrderStatus.Canceled;
+        // TODO get the fee back
+        emit CancelTrade(orderID, msg.sender);
+        return true;
+    }
 
-        order[_orderID].seller = _seller;
-        order[_orderID].buyer = msg.sender;
 
-        // Get hosters
-        address[] memory hosters = hosterContract.getHosters(_hosterNum);
+    /**
+     * @dev Seller/Buyer confirm order
+     */
+    function confirmTradeOrder(uint256 orderID) public onlyThemisUser payable returns(bool) {
+        // Ensure order is created
+        require(order[orderID].status == OrderStatus.Created);
 
-        // Host/arbitration need at least three hosters
-        require(hosters.length >= 3);
-
-        // Hoster.length should be even
-        // Occur when hosterNum bigger than length of all hosters
-        if (hosters.length > 0 && hosters.length % 2 == 0) {
-            address[] memory res = getPreviousItems(hosters, hosters.length - 1);
-            order[_orderID].hosters = res;
-            order[_orderID].N = res.length / 2 + 1;
-            assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getHostServiceType(), msg.sender, res));
-            emit CreateOrder(_orderID, msg.sender, _seller, res);
-            return true;
+        if (order[orderID].buyer != address(0)) {
+            // User can not confirm a order created by himself
+            require(order[orderID].buyer != msg.sender);
+            order[orderID].seller = msg.sender;
+        } else if (order[orderID].seller != address(0)) {
+            // User can not confirm a order created by himself
+            require(order[orderID].seller != msg.sender);
+            order[orderID].buyer = msg.sender;
         }
 
-        order[_orderID].hosters = hosters;
-        order[_orderID].N = hosters.length / 2 + 1;
+        order[orderID].status = OrderStatus.Confirmed;
 
-        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getHostServiceType(), msg.sender, hosters));
-        emit CreateOrder(_orderID, msg.sender, _seller, hosters);
+        // Get hosters
+        address[] memory hosters = hosterContract.getHosters(hosterNumber);
+
+        // hosters.length should be same with hosterNumber
+        require(hosters.length == hosterNumber);
+
+        order[orderID].hosters = hosters;
+        // TODO pay for service
+
+        emit ConfirmTradeOrder(orderID, msg.sender, hosters);
+    }
+
+
+    /**
+     * @dev User upload encrypted shard's
+     * @dev Shard's order should be same as hoster's order
+     * @param orderID ID of order
+     * @param secrets Secrets of trader's private key
+     */
+    function uploadSecret(
+        uint256 orderID,
+        string secrets
+    )
+        public
+        onlyTrader(orderID)
+        returns(bool)
+    {
+        // Ensure the order is confirmed
+        require(order[orderID].status == OrderStatus.Confirmed);
+
+        var delim = SEPARATE.toSlice();
+        var s = secrets.toSlice();
+        var shardArrayLength = s.count(delim) + 1;
+
+        // Shard length should be same with hosters length
+        address[] memory hosters = order[orderID].hosters;
+        require(shardArrayLength == hosters.length);
+
+        uint256 storageType;
+
+        //
+        if (order[orderID].buyer == msg.sender) {
+            storageType = uint256(UserType.Seller);
+        }
+        if (order[orderID].seller == msg.sender) {
+            storageType = uint256(UserType.Buyer);
+        }
+
+        // Will cover value before if this is not the first time
+        for (uint256 i = 0; i < shardArrayLength; i++) {
+            var tmpShard = s.split(delim).toString();
+
+            order[orderID].hosterShard[hosters[i]][storageType].shard = tmpShard;
+        }
+
+        order[orderID].uploaded[msg.sender] = true;
+        updateStatusWhenSecretUploaded(orderID);
+
+        emit UploadSecret(orderID, msg.sender, secrets);
         return true;
     }
 
 
     /**
-     * @dev Seller upload buyer's encrypted shard, which treated as requesting arbitration
-     * @param _orderID ID of order
-     * @param _shard Encrypted shard of buyer's private key
+     * @dev Finish the order // TODO change / send fee to hosters
      */
-    function uploadBuyerShardFromSeller(
-        uint256 _orderID,
-        string _shard
-    )
-        public
-        payable
-        onlySeller(_orderID)
-        returns(bool)
-    {
-        // Pay arbitration fee
-        address[] memory _hosterID = order[_orderID].hosters;
-        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
-        return uploadEncryptedShard(_orderID, UpdateTo.Buyer, _shard);
-    }
+    function finishOrder(uint256 orderID) public onlyOwner returns(bool) {
+        // Ensure secret have been uploaded
+        require(order[orderID].status == OrderStatus.SecretUploaded);
 
-
-    /**
-     * @dev Seller upload buyer's encrypted shard, which treated as requesting arbitration
-     * @param _orderID ID of order
-     * @param _shard Encrypted shard of buyer's private key
-     */
-     function uploadSellerShardFromBuyer(
-        uint256 _orderID,
-        string _shard
-    )
-        public
-        payable
-        onlyBuyer(_orderID)
-        returns(bool)
-    {
-        // Pay arbitration fee
-        address[] memory _hosterID = order[_orderID].hosters;
-        assert(feeManager.payFee.value(msg.value)(_orderID, feeManager.getArbitrationServiceType(), msg.sender, _hosterID));
-        return uploadEncryptedShard(_orderID, UpdateTo.Seller, _shard);
-    }
-
-
-    /**
-     * @dev Get encrypted shard of buer
-     * @param _orderID ID of order
-     * @param _hosterID ID of hoster
-     */
-    function getBuyerShardByHosterID(
-        uint256 _orderID,
-        address _hosterID
-    )
-        public
-        view
-        returns(string)
-    {
-        return getShardByHosterID(_orderID, UpdateTo.Buyer, _hosterID);
+        order[orderID].status = OrderStatus.Finished;
+        emit FinishOrder(orderID);
+        return true;
     }
 
 
     /**
      * @dev Get encrypted shard of seller
-     * @param _orderID ID of order
-     * @param _hosterID ID of hoster
+     * @param orderID ID of order
+     * @param hosterID ID of hoster
+     * @param userType Whose secret you want to get
      */
-    function getSellerShardByHosterID(
-        uint256 _orderID,
-        address _hosterID
+    function getSecret(
+        uint256 orderID,
+        address hosterID,
+        UserType userType
     )
         public
         view
         returns(string)
     {
-        return getShardByHosterID(_orderID, UpdateTo.Seller, _hosterID);
+        return order[orderID].hosterShard[hosterID][uint256(userType)].shard;
     }
 
 
     /**
      * @dev Get buyer of order
-     * @param _orderID ID of order
+     * @param orderID ID of order
      */
-    function getBuyer(uint256 _orderID) public view returns(address) {
-        return order[_orderID].buyer;
+    function getOrderBuyer(uint256 orderID) public view returns(address) {
+        return order[orderID].buyer;
     }
 
 
     /**
      * @dev Get seller of order
-     * @param _orderID ID of order
+     * @param orderID ID of order
      */
-    function getSeller(uint256 _orderID) public view returns(address) {
-        return order[_orderID].seller;
+    function getOrderSeller(uint256 orderID) public view returns(address) {
+        return order[orderID].seller;
     }
 
 
     /**
      * @dev Get hosters
-     * @param _orderID ID of order
+     * @param orderID ID of order
      */
-    function getShardHosters(uint256 _orderID) public view returns(address[]) {
-        return order[_orderID].hosters;
+    function getOrderHosters(uint256 orderID) public view returns(address[]) {
+        return order[orderID].hosters;
     }
 
-
     /**
-     * @dev Get buyer's decrypted shard which decrypted by hoster
-     * @param _orderID ID of order
-     * @param _hoster ID of hoster who decrypte shard
+     * @dev Check user ia a order's hoster or not
+     * @param orderID ID of order
      */
-    function getBuyerDecryptedShard(
-        uint256 _orderID,
-        address _hoster
+    function isOrderHoster(
+        uint256 orderID,
+        address user
     )
         public
-        onlySeller(_orderID)
         view
-        returns(string)
-    {
-        return getDecryptedShard(_orderID, UpdateTo.Buyer, _hoster);
-    }
-
-
-    /**
-     * @dev Get seller's decrypted shard which decrypted by hoster
-     * @param _orderID ID of order
-     * @param _hoster ID of hoster who decrypte shard
-     */
-    function getSellerDecryptedShard(
-        uint256 _orderID,
-        address _hoster
-    )
-        public
-        onlyBuyer(_orderID)
-        view
-        returns(string)
-    {
-        return getDecryptedShard(_orderID, UpdateTo.Seller, _hoster);
-    }
-
-
-    /**
-     * @dev Hoster upload buyer's decrypted shard
-     * @dev Hoster can only upload one's shard of buyer or seller
-     * @param _orderID ID of order
-     * @param _decryptedShard Decrypted shard of buyer's private key
-     */
-    function uploadBuyerDecryptedShard(
-        uint256 _orderID,
-        string _decryptedShard
-    )
-        public
-        onlyHoster(_orderID)
         returns(bool)
-    {
-        // Hoster haven't upload seller's shard
-        require(order[_orderID].decryptedShard[uint256(UpdateTo.Seller)][msg.sender].shard.toSlice().empty());
-
-        uploadDecryptedShard(_orderID, UpdateTo.Buyer, _decryptedShard);
-        return true;
-    }
-
-
-    /**
-     * @dev Hoster upload seller's decrypted shard
-     * @dev Hoster can only upload one's shard of buyer or seller
-     * @param _orderID ID of order
-     * @param _decryptedShard Decrypted shard of seller's private key
-     */
-    function uploadSellerDecryptedShard(
-        uint256 _orderID,
-        string _decryptedShard
-    )
-        public
-        onlyHoster(_orderID)
-        returns(bool)
-    {
-        // Hoster haven't upload seller's shard
-        require(order[_orderID].decryptedShard[uint256(UpdateTo.Buyer)][msg.sender].shard.toSlice().empty());
-
-        uploadDecryptedShard(_orderID, UpdateTo.Seller, _decryptedShard);
-        return true;
-    }
-
-
-    /**
-     * @dev Hoster upload decrypted shard which indicate that he judged buyer/seller has win the conflict
-     * @dev Upload buyer shard means Seller has win the conflict
-     * @param _orderID ID of order
-     * @param _userType Whose' shard you upload
-     * @param _decryptedShard Decrypted shard of user type's private key
-     */
-    function uploadDecryptedShard(
-        uint256 _orderID,
-        UpdateTo _userType,
-        string _decryptedShard
-    )
-        internal
-        returns(bool)
-    {
-        // Check this share is right or not
-        require(vss.verifyShare(_decryptedShard));
-
-        uint256 storageType = uint256(_userType);
-
-        // Indicate first upload
-        if (order[_orderID].decryptedShard[storageType][msg.sender].shard.toSlice().empty()) {
-            order[_orderID].decryptedShardLen[storageType] = order[_orderID].decryptedShardLen[storageType] + 1;
-        }
-        order[_orderID].decryptedShard[storageType][msg.sender].shard = _decryptedShard;
-
-        // Cover private key when shards length is bigger than N
-        // TODO wait for vss completed to change
-        if (order[_orderID].decryptedShardLen[storageType] >= order[_orderID].N) {
-            // This mean who wins
-            if (_userType == UpdateTo.Buyer) {
-                order[_orderID].judgeInfo.state = WhoWin.Seller;
-            }
-
-            if (_userType == UpdateTo.Seller) {
-                order[_orderID].judgeInfo.state = WhoWin.Buyer;
-            }
-        }
-
-        emit UploadDecryptedShards(_orderID, msg.sender, _userType, _decryptedShard);
-        return true;
-    }
-
-
-    /**
-     * @dev Validate a hoster of a user
-     * @param _orderID ID of order
-     */
-    function isUserHoster(
-        uint256 _orderID
-    )
-        public
-        view 
-        returns(bool) 
     {
         bool isHoster = false;
-        for (uint256 i = 0; i < order[_orderID].hosters.length; i++) {
-            if (order[_orderID].hosters[i] == msg.sender) {
+        for (uint256 i = 0; i < order[orderID].hosters.length; i++) {
+            if (order[orderID].hosters[i] == user) {
                 isHoster = true;
                 break;
             }
@@ -463,93 +331,143 @@ contract Trade is Ownable {
         return isHoster;
     }
 
+
     /**
-     * @dev Store user's encrypted shard
-     * @param _orderID ID of order
-     * @param _updateType Type of whose encrypted shard will be updated
-     * @param _encryptedShard Encrypted shard of private key
+     * @dev Update order status if buyer and seller all uploaded secret
      */
-    function uploadEncryptedShard(
-        uint256 _orderID,
-        UpdateTo _updateType,
-        string _encryptedShard
-    )
-        internal
-        returns(bool)
-    {
-        var delim = SEPARATE.toSlice();
-        var s = _encryptedShard.toSlice();
-        var shardArrayLength = s.count(delim) + 1;
+    function updateStatusWhenSecretUploaded(uint256 orderID) internal returns(bool){
+        address buyer = order[orderID].buyer;
+        address seller = order[orderID].seller;
 
-        // _shard like "encryptedShard,encryptedShard,......"
-        // it's length should be same with _hosterID
-        address[] memory _hosters = order[_orderID].hosters;
-        require(shardArrayLength == _hosters.length);
-
-        var storageType = uint256(_updateType);
-
-        // Will cover value before if this is not the first time
-        for (uint256 i = 0; i < shardArrayLength; i++) {
-            var tmpShard = s.split(delim).toString();
-
-            order[_orderID].hosterShard[_hosters[i]][storageType].shard = tmpShard;
+        if (order[orderID].uploaded[buyer] == true && order[orderID].uploaded[seller] == true) {
+            order[orderID].status = OrderStatus.SecretUploaded;
         }
 
-        emit UploadEncryptedShard(_orderID, msg.sender, _updateType, _encryptedShard);
+        return true;
+    }
+}
+
+contract ArbitratorManageable is Ownable {
+    // Arbitrator
+    mapping(address => bool) arbitrator;
+
+    event AddArbitrator(address indexed who);
+
+    event RemoveArbitrator(address indexed who);
+
+    modifier onlyArbitrator() {
+        require(arbitrator[msg.sender] == true);
+        _;
+    }
+
+
+    /**
+     * @dev Owner add arbitrator
+     * @param who Address will be added
+     */
+    function addArbitrator(address who) public onlyOwner returns(bool) {
+        arbitrator[who] = true;
+        emit AddArbitrator(who);
         return true;
     }
 
 
     /**
-     * @dev Get buyer/seller's encrypted shard of private key
-     * @param _orderID ID of order
-     * @param _userType Type of user whose encrypted shard you want to get
-     * @param _hosterID ID of hoster
+     * @dev Owner remove arbitrator
+     * @param who Address will be removed
      */
-    function getShardByHosterID(
-        uint256 _orderID,
-        UpdateTo _userType,
-        address _hosterID
-    )
-        internal
-        view
-        returns(string)
-    {
-        return order[_orderID].hosterShard[_hosterID][uint256(_userType)].shard;
+    function removeArbitrator(address who) public onlyOwner returns(bool) {
+        delete(arbitrator[who]);
+        emit RemoveArbitrator(who);
+        return true;
     }
 
 
     /**
-     * @dev Get decrypted shard which is decrypted by hoster
-     * @param _orderID ID of order
-     * @param _userType Type of user whose decrypted shard want to get
-     * @param _hoster ID of hoster who decrypte shard
+     * @dev Check a address is judge or not
      */
-    function getDecryptedShard(
-        uint256 _orderID,
-        UpdateTo _userType,
-        address _hoster
-    )
-        internal
-        view
-        returns(string)
-    {
-        return order[_orderID].decryptedShard[uint256(_userType)][_hoster].shard;
+    function isArbitrator(address who) public view returns(bool) {
+        return arbitrator[who] == true;
+    }
+}
+
+
+//
+contract Arbitrable is TradeBasic, ArbitratorManageable {
+
+    // Arbitration of order;
+    mapping(uint256 => ArbitrateInfo) arbitration;
+
+    struct ArbitrateInfo {
+        // Who arbitrate
+        address requester;
+
+        // Who wins
+        address winner;
+    }
+
+    event Arbitrate(uint256 orderID, address indexed user);
+
+    event Judge(uint256 orderID, address indexed winner, address indexed judge);
+
+
+    /**
+     * @dev User arbitrate
+     * @param orderID ID of order want to arbitrate for
+     */
+    function arbitrate(uint256 orderID) public onlyTrader(orderID) returns(bool) {
+        // Not necessary check order(check by onlyTrader)
+        // Have not arbitrate before
+        require(arbitration[orderID].requester == address(0));
+
+        // TODO pay for service
+
+        arbitration[orderID].requester = msg.sender;
+        emit Arbitrate(orderID, msg.sender);
+        return true;
     }
 
 
     /**
-     * @dev Return previous item of a address array
-     * @param _ori Original address array
+     * @dev Arbitrator judge who wins
+     * @param orderID ID of order
+     * @param winner User who wins
      */
-    function getPreviousItems(address[] _ori, uint256 _num) internal pure returns(address[]) {
-        require(_num <= _ori.length);
+    function judge(uint256 orderID, address winner) public onlyArbitrator returns(bool) {
+        // Ensure order is in arbitration
+        require(arbitration[orderID].requester != address(0));
 
-        address[] memory res = new address[](_num);
-        for (uint256 i = 0; i < _num; i++) {
-            res[i] = _ori[i];
-        }
+        // Winner must be one of buyer/seller
+        require(winner == order[orderID].buyer || winner == order[orderID].seller);
 
-        return res;
+        arbitration[orderID].winner = winner;
+        // TODO send fee to judge
+        emit Judge(orderID, winner, msg.sender);
+        return true;
     }
+
+
+    /**
+     * @dev Get arbitration requester
+     * @param orderID ID of order
+     */
+    function getRequester(uint256 orderID) public view returns(address) {
+        return arbitration[orderID].requester;
+    }
+
+
+    /**
+     * @dev Get arbitration winner
+     * @param orderID ID of order
+     */
+    function getWinner(uint256 orderID) public view returns(address) {
+        return arbitration[orderID].winner;
+    }
+}
+
+
+// Main contract
+contract Trade is Arbitrable, OrderManageable, InfoManageable {
+
+
 }

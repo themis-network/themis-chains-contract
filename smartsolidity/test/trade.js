@@ -3,10 +3,11 @@ import { assertEquals, assertBigger } from "./help";
 
 const FeeManager = artifacts.require("./FeeManager");
 const Trade = artifacts.require("Trade");
-const Vss = artifacts.require("Vss");
 const Hoster = artifacts.require("Hoster");
 
 const NORMAL_USER = 0;
+const BUYER = 0;
+const SELLER = 1;
 const testFee = web3.toWei(3, "ether");
 const BigNumber = web3.BigNumber;
 const should = require('chai')
@@ -19,8 +20,7 @@ contract("Trade test", function (accounts) {
     before(async function () {
         this.feeRate = web3.toWei(1, "ether");
         this.FeeManagerIns = await FeeManager.new();
-        this.VssIns = await Vss.new();
-        this.TradeIns = await Trade.new(this.FeeManagerIns.address, this.VssIns.address);
+        this.TradeIns = await Trade.new();
         this.HosterIns = await Hoster.new(this.FeeManagerIns.address);
 
         // Set Hoster/trade contract address
@@ -56,12 +56,19 @@ contract("Trade test", function (accounts) {
         const hoster_4Deposit = web3.toWei(10, "ether");
         const hoster_4PublicKey = "asdf123";
         await this.HosterIns.addHoster(hoster_4, hoster_4Fame, hoster_4PublicKey, {value: hoster_4Deposit});
+
+        // Add hoster 5
+        const hoster_5 = accounts[7];
+        const hoster_5Fame = 4;
+        const hoster_5Deposit = web3.toWei(9, "ether");
+        const hoster_5PublicKey = "sdfwww44";
+        await this.HosterIns.addHoster(hoster_5, hoster_5Fame, hoster_5PublicKey, {value: hoster_5Deposit});
     });
 
 
-    it("should right create order and pay fee(GET) for it", async function () {
+    // TODO add fee manage
+    it("should right create order by themis user", async function () {
         const buyer = accounts[1];
-        const seller = accounts[2];
         const orderID = 1;
 
         // Add buyer to themis user
@@ -72,151 +79,155 @@ contract("Trade test", function (accounts) {
         let isThemisUser = await this.HosterIns.isThemisUser(newUser);
         assert.equal(isThemisUser, true, "should be right added to themis user");
 
+        await this.TradeIns.createNewTradeOrder(orderID, BUYER, {from: buyer});
+
+        let actualBuyer = await this.TradeIns.getOrderBuyer(orderID);
+        assert.equal(actualBuyer, buyer, "buyer should be right set");
+
+    })
+
+    it("can not create two order with same orderID", async function() {
+        // buyer is added to themis user before
+        const buyer = accounts[1];
+        const orderID = 1;
+
+        await assertRevert(this.TradeIns.createNewTradeOrder(orderID, BUYER, {from: buyer}));
+    })
+
+    it("only themis user can create order", async function() {
+        // Buyer is not themis user
+        const buyer = accounts[2];
+        const orderID = 2;
+
+        await assertRevert(this.TradeIns.createNewTradeOrder(orderID, BUYER, {from: buyer}));
+    })
+
+
+    it("trader can not confirm a order created by himself", async function () {
+        const buyer = accounts[1];
+        const orderID = 1;
+
+        await assertRevert(this.TradeIns.confirmTradeOrder(orderID, {from: buyer}));
+    })
+
+    it("another themis user can confirm order, and should return actual hosters(even)", async function () {
+        let seller = accounts[2];
+        let orderID = 1;
+
         // Add seller to themis user
         const sellerFame = 2;
         const sellerPublicKey = "asdfwe";
         await this.HosterIns.addUser(seller, sellerFame, sellerPublicKey, NORMAL_USER);
 
-        const buyerBalanceBefore = await web3.eth.getBalance(buyer);
+        // Will　get five hosters
+        await this.TradeIns.confirmTradeOrder(orderID, {from: seller});
 
-        // User should pay GET tokens for this server
-        await this.TradeIns.createNewTradeOrder(orderID, seller, 3, {from: buyer, value: testFee});
+        const actualHosters = await this.TradeIns.getOrderHosters(orderID);
+        assert.equal(actualHosters.length, 5, "should auto get 5 hosters");
 
-        let actualBuyer = await this.TradeIns.getBuyer(orderID);
-        assert.equal(actualBuyer, buyer, "buyer should be right set");
-
-        let acutalSeller = await this.TradeIns.getSeller(orderID);
-        assert.equal(acutalSeller, seller, "seller should be right set");
-
-        const buyerBalanceAfter = await web3.eth.getBalance(buyer);
-        const feePayed = buyerBalanceBefore.sub(buyerBalanceAfter);
-
-        // Pay some fee for transaction
-        assertBigger(feePayed, testFee, "feePayed should a little bigger than hoster get");
-    })
-
-    it("should return actual hosters(even) when number given by buyer is bigger than number of hosters", async function () {
-        // Condition: 4 hosters, but buyer want to get 5 hosters, contract will auto get 3(even) hosters
-        let buyer = accounts[1];
-        let seller = accounts[2];
-        let orderID = 33;
-        let hostersLen = 5;
-
-        // Try to get 5 hosters
-        await this.TradeIns.createNewTradeOrder(orderID, seller, hostersLen, {from: buyer, value: testFee});
-
-        const actualHosters = await this.TradeIns.getShardHosters(orderID);
-        assert.equal(actualHosters.length, 3, "should auto select 3 hosters in condition below");
+        const acutalSeller = await this.TradeIns.getOrderSeller(orderID);
+        assert.equal(acutalSeller, seller, "seller should be right added");
     })
 
 
-    it("can not create two order with same orderID", async function() {
-        // buyer is added to themis user before
-        const buyer = accounts[1];
-        const seller = accounts[2];
-        const orderID = 1;
-
-        // Have approve enough get tokens for fee manager contract
-        await assertRevert(this.TradeIns.createNewTradeOrder(orderID, seller, 3, {from: buyer, value: testFee}));
-    })
-
-
-    it("only buyer/seller can upload encrypted shard(mean request artibaion service)", async function () {
+    it("only buyer/seller can upload encrypted shard", async function () {
         const buyer = accounts[1];
         const seller = accounts[2];
         const others = accounts[8];
-        const orderID = 2;
-
-        await this.TradeIns.createNewTradeOrder(orderID, seller, 3, {from: buyer, value: testFee});
+        const orderID = 1;
 
         // Only buyer can upload seller's encrypted shard
         const sellerEncryptedShard_1 = "asbdsdfbheg34";
         const sellerEncryptedShard_2 = "asbasdfdg34";
         const sellerEncryptedShard_3 = "asbd3rtwfg34";
-        const sellerShard = sellerEncryptedShard_1 + "," + sellerEncryptedShard_2 + "," + sellerEncryptedShard_3;
+        const sellerEncryptedShard_4 = "asbd3rsstwfg34";
+        const sellerEncryptedShard_5 = "asbd3rtwfallg34";
+        const sellerShard = sellerEncryptedShard_1 + "," + sellerEncryptedShard_2 + "," + sellerEncryptedShard_3 + "," + sellerEncryptedShard_4 + "," + sellerEncryptedShard_5;
 
         // This service will cost GET Tokens
         // Check shard is right uploaded
         const host_1 = accounts[3];
         const host_2 = accounts[4];
         const host_3 = accounts[5];
+        const host_4 = accounts[6];
+        const host_5 = accounts[7];
 
-        let host_1_balance_before = await web3.eth.getBalance(host_1);
-        let host_2_balance_before = await web3.eth.getBalance(host_2);
-        let host_3_balance_before = await web3.eth.getBalance(host_3);
-
-        await this.TradeIns.uploadSellerShardFromBuyer(orderID, sellerShard, {from: buyer, value: testFee});
+        await this.TradeIns.uploadSecret(orderID, sellerShard, {from: buyer});
 
         // reject calls from others except buyer/seller
-        await assertRevert(this.TradeIns.uploadSellerShardFromBuyer(orderID, sellerShard, {from: others, value: testFee}));
+        await assertRevert(this.TradeIns.uploadSecret(orderID, sellerShard, {from: others}));
 
         // SELLER indicate this is seller's shard uploaded by buyer
-        let shard_1 = await this.TradeIns.getSellerShardByHosterID(orderID, host_1);
-        let shard_2 = await this.TradeIns.getSellerShardByHosterID(orderID, host_2);
-        let shard_3 = await this.TradeIns.getSellerShardByHosterID(orderID, host_3);
+        let shard_1 = await this.TradeIns.getSecret(orderID, host_1, SELLER);
+        let shard_2 = await this.TradeIns.getSecret(orderID, host_2, SELLER);
+        let shard_3 = await this.TradeIns.getSecret(orderID, host_3, SELLER);
+        let shard_4 = await this.TradeIns.getSecret(orderID, host_4, SELLER);
+        let shard_5 = await this.TradeIns.getSecret(orderID, host_5, SELLER);
 
-        assert.equal(shard_1, sellerEncryptedShard_1, "shard_1 should be the same");
-        assert.equal(shard_2, sellerEncryptedShard_2, "shard_2 should be the same");
-        assert.equal(shard_3, sellerEncryptedShard_3, "shard_3 should be the same");
+        assert.equal(shard_1, sellerEncryptedShard_1, "seller shard_1 should be the same");
+        assert.equal(shard_2, sellerEncryptedShard_2, "seller shard_2 should be the same");
+        assert.equal(shard_3, sellerEncryptedShard_3, "seller shard_3 should be the same");
+        assert.equal(shard_4, sellerEncryptedShard_4, "seller shard_4 should be the same");
+        assert.equal(shard_5, sellerEncryptedShard_5, "seller shard_5 should be the same");
 
-        // Check hoster get fee
-        let host_1_balance = await web3.eth.getBalance(host_1);
-        let host_2_balance = await web3.eth.getBalance(host_2);
-        let host_3_balance = await web3.eth.getBalance(host_3);
 
-        let getBalance_1 = host_1_balance.sub(host_1_balance_before);
-        let getBalance_2 = host_2_balance.sub(host_2_balance_before);
-        let getBalance_3 = host_3_balance.sub(host_3_balance_before);
+        // Seller upload buyer's shard
+        const buyerEncryptedShard_1 = "sxecfdr4444";
+        const buyerEncryptedShard_2 = "sxsdfcf24444";
+        const buyerEncryptedShard_3 = "sxe123r4444";
+        const buyerEncryptedShard_4 = "sxe3h4r5r4444";
+        const buyerEncryptedShard_5 = "sxlyudr4444";
+        const buyerShard = buyerEncryptedShard_1 + "," + buyerEncryptedShard_2 + "," + buyerEncryptedShard_3 + "," + buyerEncryptedShard_4 + "," + buyerEncryptedShard_5;
+        await this.TradeIns.uploadSecret(orderID, buyerShard, {from: seller});
 
-        assertEquals(getBalance_1, this.feeRate, "host_1 should get 1*this.feeRate get coins");
-        assertEquals(getBalance_2, this.feeRate, "host_1 should get 1*this.feeRate get coins");
-        assertEquals(getBalance_3, this.feeRate, "host_1 should get 1*this.feeRate get coins");
+        let buyer_shard_1 = await this.TradeIns.getSecret(orderID, host_1, BUYER);
+        let buyer_shard_2 = await this.TradeIns.getSecret(orderID, host_2, BUYER);
+        let buyer_shard_3 = await this.TradeIns.getSecret(orderID, host_3, BUYER);
+        let buyer_shard_4 = await this.TradeIns.getSecret(orderID, host_4, BUYER);
+        let buyer_shard_5 = await this.TradeIns.getSecret(orderID, host_5, BUYER);
+
+        assert.equal(buyer_shard_1, buyerEncryptedShard_1, "buyer shard_1 should be the same");
+        assert.equal(buyer_shard_2, buyerEncryptedShard_2, "buyer shard_2 should be the same");
+        assert.equal(buyer_shard_3, buyerEncryptedShard_3, "buyer shard_3 should be the same");
+        assert.equal(buyer_shard_4, buyerEncryptedShard_4, "buyer shard_4 should be the same");
+        assert.equal(buyer_shard_5, buyerEncryptedShard_5, "buyer shard_5 should be the same");
     })
 
+    it("upload secret will be revert when secret's length is not same with hoster's length", async function () {
+        const seller = accounts[2];
+        const orderID = 1;
 
-    it("hoster can upload buyer/seller's decrypted shard means another wins conflict", async function () {
-        // order created before
+        // Seller upload buyer's shard
+        const buyerEncryptedShard_1 = "sxecfdr4444";
+        const buyerEncryptedShard_2 = "sxsdfcf24444";
+        const buyerEncryptedShard_3 = "sxe123r4444";
+        const buyerEncryptedShard_4 = "sxe3h4r5r4444";
+        const buyerShard = buyerEncryptedShard_1 + "," + buyerEncryptedShard_2 + "," + buyerEncryptedShard_3 + "," + buyerEncryptedShard_4;
+        await assertRevert(this.TradeIns.uploadSecret(orderID, buyerShard, {from: seller}));
+    })
+
+    it("buyer/seller can request for arbitration", async function () {
         const buyer = accounts[1];
-        const orderID = 2;
-        const decrypted_shard_1 = "sdsdfgwertydfh";
-        const decrypted_shard_2 = "asdfwexbvert";
-        const decrypted_shard_3 = "456fghfgh";
-        // Check shard is right uploaded
-        const host_1 = accounts[3];
-        const host_2 = accounts[4];
-        const host_3 = accounts[5];
+        const orderID = 1;
 
-        // Check hoster'id is right stored
-        let hosters = await this.TradeIns.getShardHosters(orderID);
-        hosters[0].should.equal(host_1);
-        hosters[1].should.equal(host_2);
-        hosters[2].should.equal(host_3);
+        await this.TradeIns.arbitrate(orderID, {from: buyer});
 
-        // This means buyer wins
-        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_1, {from:host_1});
-        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_2, {from:host_2});
-        await this.TradeIns.uploadSellerDecryptedShard(orderID, decrypted_shard_3, {from:host_3});
-
-        // Check decrypted shard is right uploaded
-        let actual_decrypted_shard_1 = await this.TradeIns.getSellerDecryptedShard(orderID, host_1, {from: buyer});
-        let actual_decrypted_shard_2 = await this.TradeIns.getSellerDecryptedShard(orderID, host_2, {from: buyer});
-        let actual_decrypted_shard_3 = await this.TradeIns.getSellerDecryptedShard(orderID, host_3, {from: buyer});
-
-        actual_decrypted_shard_1.should.equal(decrypted_shard_1);
-        actual_decrypted_shard_2.should.equal(decrypted_shard_2);
-        actual_decrypted_shard_3.should.equal(decrypted_shard_3);
+        let requester = await this.TradeIns.getRequester(orderID);
+        assert.equal(requester, buyer, "buyer can request for arbitration");
     })
 
-    it("should revert if hoster want to upload both seller and buyer's decryptedShard", async function () {
-        // hoster have uploaded seller's decrypted shard
-        const decryptedShard = "sdf234";
-        const orderID = 2;
-        const hoster_1 = accounts[3];
-        const hoster_2 = accounts[4];
-        const hoster_3 = accounts[5];
+    it("only judge can judge the order", async function () {
+        const orderID = 1;
+        const judge = accounts[9];
+        await this.TradeIns.addArbitrator(judge);
 
-        await assertRevert(this.TradeIns.uploadBuyerDecryptedShard(orderID, decryptedShard, {from: hoster_1}));
-        await assertRevert(this.TradeIns.uploadBuyerDecryptedShard(orderID, decryptedShard, {from: hoster_2}));
-        await assertRevert(this.TradeIns.uploadBuyerDecryptedShard(orderID, decryptedShard, {from: hoster_3}));
+        const isJudge = await this.TradeIns.isArbitrator(judge);
+        assert.equal(isJudge, true, "should right add judge");
+
+        const winner = accounts[1];
+        await this.TradeIns.judge(orderID, winner, {from: judge});
+
+        const acutalWinner = await this.TradeIns.getWinner(orderID);
+        assert.equal(acutalWinner, winner, "shoud right judge who win");
     })
 });

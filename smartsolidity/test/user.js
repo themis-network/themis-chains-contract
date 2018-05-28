@@ -1,10 +1,8 @@
 import assertRevert from "zeppelin-solidity/test/helpers/assertRevert"
 import {assertEquals} from "./help";
 
-const GET = artifacts.require("./GEToken");
 const FeeManager = artifacts.require("./FeeManager");
 const Trade = artifacts.require("Trade");
-const Vss = artifacts.require("Vss");
 const Hoster = artifacts.require("Hoster");
 
 const NORMAL_USER = 0;
@@ -17,13 +15,11 @@ const should = require('chai')
 
 contract("Hoster test", function(accounts){
     before(async function () {
-        this.GETIns = await GET.new();
         this.feeRate = web3.toWei(1, "ether");
         this.FeeManagerIns = await FeeManager.new();
         this.HosterIns = await Hoster.new(this.FeeManagerIns.address);
 
-        this.VssIns = await Vss.new();
-        this.TradeIns = await Trade.new(this.FeeManagerIns.address, this.VssIns.address);
+        this.TradeIns = await Trade.new();
 
         // Set Hoster/trade contract address
         await this.FeeManagerIns.updateHosterContract(this.HosterIns.address);
