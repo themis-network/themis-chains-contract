@@ -8,6 +8,8 @@ import "./librarys/SafeMath.sol";
 /**
  * @dev Main manager for fee
  */
+// TODO change workflow of fee manager
+// TODO move payment to trade and hoster contract, then delete feemanager contract
 contract FeeManager is Ownable {
 
     using SafeMath for uint256;
@@ -228,11 +230,13 @@ contract FeeManager is Ownable {
         require(user != address(0));
         require(depositPayed[user] > 0);
 
-        // Transfer deposit back to user
-        user.transfer(depositPayed[user]);
-        emit WithdrawDeposit(user, depositPayed[user]);
-
+        uint256 amount = depositPayed[user];
         depositPayed[user] = 0;
+
+        // Transfer deposit back to user
+        user.transfer(amount);
+        emit WithdrawDeposit(user, amount);
+
         return true;
     }
 
@@ -264,8 +268,8 @@ contract FeeManager is Ownable {
 
         require(amount <= depositPayed[user]);
 
-        user.transfer(amount);
         depositPayed[user] = depositPayed[user].sub(amount);
+        user.transfer(amount);
 
         emit WithdrawDeposit(user, amount);
         return true;

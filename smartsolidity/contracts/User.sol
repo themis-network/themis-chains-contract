@@ -253,7 +253,7 @@ contract Hoster is ThemisUser {
         uint256 _deposit = msg.value;
 
         // Pay deposit
-        feeManager.payDeposit.value(_deposit)(_id);
+        assert(feeManager.payDeposit.value(_deposit)(_id));
 
         bool success;
         uint256 position;
@@ -295,7 +295,7 @@ contract Hoster is ThemisUser {
 
         uint256 _deposit = msg.value;
         // Pay deposit
-        feeManager.payDeposit.value(_deposit)(_id);
+        assert(feeManager.payDeposit.value(_deposit)(_id));
 
         bool success;
         uint256 position;
@@ -326,15 +326,14 @@ contract Hoster is ThemisUser {
         require(_id != address(0));
         require(idIndex[_id] != 0);
 
-        // With draw deposit
-        feeManager.withdrawDeposit(_id);
-
         // Set all info to zero/init
         sortedHosterIndex.remove(idIndex[_id]);
         hoster[idIndex[_id]] = HosterInfo(address(0), 0);
         idIndex[_id] = 0;
 
         super.updateUser(_id, users[_id].fame, users[_id].publicKey, UserType.Normal);
+        // With draw deposit
+        assert(feeManager.withdrawDeposit(_id));
 
         emit RemoveThemisHoster(_id);
         return true;
@@ -369,7 +368,7 @@ contract Hoster is ThemisUser {
 
         // Update deposit payed by hoster
         // Will throw when _newDeposit is same with original deposit
-        feeManager.increaseDeposit.value(msg.value)(_id);
+        assert(feeManager.increaseDeposit.value(msg.value)(_id));
         require(updateHosterFameOrDeposit(_id, users[_id].fame, hoster[idIndex[_id]].deposit.add(msg.value)) == true);
 
         return true;
@@ -384,8 +383,8 @@ contract Hoster is ThemisUser {
         require(amount > 0);
         address _id = msg.sender;
 
-        feeManager.decreaseDeposit(msg.sender, amount);
         require(updateHosterFameOrDeposit(_id, users[_id].fame, hoster[idIndex[_id]].deposit.sub(amount)) == true);
+        assert(feeManager.decreaseDeposit(msg.sender, amount));
         return true;
     }
 

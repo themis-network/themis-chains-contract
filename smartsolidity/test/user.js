@@ -1,5 +1,5 @@
 import assertRevert from "zeppelin-solidity/test/helpers/assertRevert"
-import {assertEquals} from "./help";
+import {assertBigger, assertEquals, assertSmaller} from "./help";
 
 const FeeManager = artifacts.require("./FeeManager");
 const Trade = artifacts.require("Trade");
@@ -64,10 +64,16 @@ contract("Hoster test", function(accounts){
             const deposit = web3.toWei(50, "ether");
             const publicKey = "adfsfs";
 
+            const admin = accounts[0];
+            let adminBalanceBefore = await web3.eth.getBalance(admin);
+
             await this.HosterIns.addHoster(hoster, fame, publicKey, {value: deposit});
             // Will add it to themis user auto
             let isThemisUser = await this.HosterIns.isThemisUser(hoster);
             assert.equal(isThemisUser, true, "should add hoster to themis user auto when hoster is not themis user");
+
+            let adminBalanceAfter = await web3.eth.getBalance(admin);
+            assertBigger(adminBalanceBefore.sub(adminBalanceAfter), deposit, "admin should pay deposit(user paid to admin before) and transaction fee");
         })
 
 
@@ -81,9 +87,15 @@ contract("Hoster test", function(accounts){
             let isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, false, "normal user is not hoster");
 
+            const admin = accounts[0];
+            let adminBalanceBefore = await web3.eth.getBalance(admin);
+
             await this.HosterIns.updateNormalUserToHoster(user, {value: newDeposit});
             isHoster = await this.HosterIns.isHoster(user);
             assert.equal(isHoster, true, "should right update normal user to hoster");
+
+            let adminBalanceAfter = await web3.eth.getBalance(admin);
+            assertBigger(adminBalanceBefore.sub(adminBalanceAfter), newDeposit, "admin should pay deposit and transaction fee when update user to hoster");
         })
 
 
@@ -168,7 +180,7 @@ contract("Hoster test", function(accounts){
         })
         
         
-        it("should right update one's fame/deposit, list position will be changed when he/she is a hoster", async function () {
+        it("should right update one's fame, list position will be changed when he/she is a hoster", async function () {
 
             // Should be the first one returned
             // Ori fame and deposit
@@ -218,13 +230,16 @@ contract("Hoster test", function(accounts){
             // accounts[3]: {fame:7, deposit:10GET}
             // accounts[4]: {fame:4, deposit:20GET}
             const balanceBefore = await web3.eth.getBalance(this.FeeManagerIns.address);
+            const userBalanceBefore = await web3.eth.getBalance(should_be_1);
             const increaseAmount = web3.toWei(40, "ether");
 
             // Only user self can call this function
             await this.HosterIns.increaseDeposit({from: should_be_1, value: increaseAmount});
 
             const balanceAfter = await web3.eth.getBalance(this.FeeManagerIns.address);
+            const userBalanceAfter = await web3.eth.getBalance(should_be_1);
             assertEquals(balanceAfter.sub(balanceBefore), increaseAmount, "FeeManage contract should get GET coin of deposit");
+            assertBigger(userBalanceBefore.sub(userBalanceAfter), increaseAmount, "User should pay deposit and transaction fee");
             // After update: fame and deposit
             // accounts[5]: {fame:5, deposit:60GET}
             // accounts[1]: {fame:5, deposit:50GET}
@@ -262,12 +277,15 @@ contract("Hoster test", function(accounts){
             const decreaseAmount = web3.toWei(13, "ether");
 
             let balanceBefore = await web3.eth.getBalance(this.FeeManagerIns.address);
+            let userBalanceBefore = await web3.eth.getBalance(one);
 
             await this.HosterIns.decreaseDeposit(decreaseAmount, {from: one});
 
             let balanceAfter = await web3.eth.getBalance(this.FeeManagerIns.address);
+            let userBalanceAfter = await web3.eth.getBalance(one);
             // Hoster should get back amount of get he decreasing
             assertEquals(balanceBefore.sub(balanceAfter), decreaseAmount, "FeeManage contract should send back get coin");
+            assertSmaller(userBalanceAfter.sub(userBalanceBefore), decreaseAmount, "user should get back deposit and pay transaction fee when decrease deposit");
 
             const normalUser = accounts[7];
             let tx = await this.HosterIns.getHosters(4, {from: normalUser});

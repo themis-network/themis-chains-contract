@@ -39,28 +39,31 @@ truffle test
 test result:
 ```bash
   Contract: Trade test
-    ✓ should right create order by themis user (91ms)
+    ✓ should right create order by themis user (117ms)
     ✓ can not create two order with same orderID
     ✓ only themis user can create order
     ✓ trader can not confirm a order created by himself
-    ✓ another themis user can confirm order, and should return actual hosters(even) (130ms)
-    ✓ only buyer/seller can upload encrypted shard (331ms)
+    ✓ another themis user can confirm order, and should return actual hosters(even) (99ms)
+    ✓ only buyer/seller can upload encrypted shard (253ms)
     ✓ upload secret will be revert when secret's length is not same with hoster's length
-    ✓ buyer/seller can request for arbitration (45ms)
-    ✓ only judge can judge the order (115ms)
+    ✓ buyer/seller can request for arbitration
+    ✓ only judge can judge the order (59ms)
 
   Contract: Hoster test
     Normal function test
-      ✓ should right add/update/remove normal user (118ms)
+      ✓ should right add/update/remove normal user (92ms)
     Hoster function test
-      ✓ should right add hoster (167ms)
-      ✓ should right update normal user to hoster (163ms)
-      ✓ should right remove hoster and get back deposit (423ms)
+      ✓ should right add hoster (239ms)
+      ✓ should right update normal user to hoster (261ms)
+      ✓ should right remove hoster and get back deposit (230ms)
     Get hoster service Test
-      ✓ should right get hoster sort by fame and depoist (346ms)
-      ✓ should right update one's fame/deposit, list position will be changed when he/she is a hoster (144ms)
-      ✓ should right increase hoster' deposit, hoster's position will be changed (425ms)
-      ✓ should right decrease hoster's deposit, hoster's position will be changed (541ms)
+      ✓ should right get hoster sort by fame and depoist (261ms)
+      ✓ should right update one's fame, list position will be changed when he/she is a hoster (105ms)
+      ✓ should right increase hoster' deposit, hoster's position will be changed (409ms)
+      ✓ should right decrease hoster's deposit, hoster's position will be changed (388ms)
+
+
+  17 passing (4s)
 ```
 
 
