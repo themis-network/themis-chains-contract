@@ -38,32 +38,32 @@ truffle test
 
 test result:
 ```bash
-  Contract: Trade test
-    ✓ should right create order by themis user (117ms)
+ Contract: Trade test
+    ✓ should right create order by themis user
     ✓ can not create two order with same orderID
-    ✓ only themis user can create order
-    ✓ trader can not confirm a order created by himself
-    ✓ another themis user can confirm order, and should return actual hosters(even) (99ms)
-    ✓ only buyer/seller can upload encrypted shard (253ms)
-    ✓ upload secret will be revert when secret's length is not same with hoster's length
-    ✓ buyer/seller can request for arbitration
-    ✓ only judge can judge the order (59ms)
+    ✓ only owner can create order
+    ✓ seller/buyer can not be same when confirm an order
+    ✓ another user can confirm order, and should return actual trustees(even) (90ms)
+    ✓ creator can upload encrypted shard (270ms)
+    ✓ upload secret will be revert when secret's length is not same with trustee's length
+    ✓ upload secret will be revert when userID is not buyer/seller
+    ✓ owner can request for arbitration for user
+    ✓ only judge can judge the order (76ms)
 
-  Contract: Hoster test
-    Normal function test
-      ✓ should right add/update/remove normal user (92ms)
-    Hoster function test
-      ✓ should right add hoster (239ms)
-      ✓ should right update normal user to hoster (261ms)
-      ✓ should right remove hoster and get back deposit (230ms)
-    Get hoster service Test
-      ✓ should right get hoster sort by fame and depoist (261ms)
-      ✓ should right update one's fame, list position will be changed when he/she is a hoster (105ms)
-      ✓ should right increase hoster' deposit, hoster's position will be changed (409ms)
-      ✓ should right decrease hoster's deposit, hoster's position will be changed (388ms)
+  Contract: Trustee test
+    Add/Update/Remove trustee
+      ✓ should get nothing when there is no trustees
+      ✓ owner should right add trustee (57ms)
+      ✓ trustee should right increase deposit (104ms)
+      ✓ should right remove trustee and get back deposit (267ms)
+    Trustee list
+      ✓ should get trustees sort by fame and deposit (366ms)
+      ✓ should right update one's fame and his position in list will be changed (91ms)
+      ✓ should right increase trustee' deposit and his position will be changed (72ms)
+      ✓ should right decrease trustee's deposit and his position will be changed (278ms)
 
 
-  17 passing (4s)
+  18 passing (3s)
 ```
 
 
