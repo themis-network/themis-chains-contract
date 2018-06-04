@@ -155,7 +155,7 @@ contract OrderManageable is TradeBasic, Ownable  {
         uint256 userID,
         UserType userType
     )
-        public
+        external
         payable
         onlyOwner
         onlyValidateType(userType)
@@ -204,7 +204,7 @@ contract OrderManageable is TradeBasic, Ownable  {
     /**
      * @dev Seller/Buyer confirm order
      */
-    function confirmTradeOrder(uint256 orderID, uint256 userID) public onlyCreator(orderID) payable returns(bool) {
+    function confirmTradeOrder(uint256 orderID, uint256 userID) external onlyCreator(orderID) payable returns(bool) {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
         require(msg.value > 0);
