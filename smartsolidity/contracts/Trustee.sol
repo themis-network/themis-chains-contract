@@ -201,7 +201,7 @@ contract Trustee is Ownable {
      * @dev Trustee decrease deposit and withdraw originalDeposit - newDeposit
      * @param amount Amount of deposit want to decrease
      */
-    function decreaseDeposit(uint256 amount) external payable onlyTrustee returns(bool) {
+    function decreaseDeposit(uint256 amount) public onlyTrustee returns(bool) {
         require(amount > 0);
 
         address ID = msg.sender;
