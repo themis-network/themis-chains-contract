@@ -11,13 +11,15 @@ contract TradeBasic {
     // Separate to split a string
     string constant SEPARATE = ",";
 
-    // Number of trustee will be selected
-    uint256 public trusteeNumber = 5;
+    // Default number of trustee will be selected
+    // Should less than 2^8(256)
+    uint8 public trusteeNumber = 5;
 
     // Trustee contract
     Trustee public trusteeContract;
 
-    mapping(uint256 => TradeOrder) order;
+    // Order ID should less than 2^80(bigger than 10^21)
+    mapping(uint80 => TradeOrder) order;
 
     // Currently, how many fee a trustee can get, which will increase automatically
     // when a order finished/judged;
@@ -31,16 +33,18 @@ contract TradeBasic {
         address creator;
 
         // Buyer uid
-        uint256 buyer;
+        // Should less than 2^32(4294967296)
+        uint32 buyer;
 
         // Seller uid
-        uint256 seller;
+        // Should less than 2^32(4294967296)
+        uint32 seller;
 
         // buyer/seller's uid => amount of fee paid
-        mapping(uint256 => uint256) feePaid;
+        mapping(uint32 => uint256) feePaid;
 
         // Buyer/Seller upload secret or not
-        mapping(uint256 => bool) uploaded;
+        mapping(uint32 => bool) uploaded;
 
         // Trustee whose public key used to encrypt buyer/seller's shard
         address[] trustees;
@@ -50,7 +54,7 @@ contract TradeBasic {
 
         // buyer/seller's encrypted shard
         // Trustee's id(address) => user id => info
-        mapping(address => mapping(uint256 => EncryptedShard)) trusteeShard;
+        mapping(address => mapping(uint32 => EncryptedShard)) trusteeShard;
 
         OrderStatus status;
     }
@@ -64,9 +68,9 @@ contract TradeBasic {
     /**
       * @dev Get fee should sent to per trustee of a order
       */
-    function getPerFeeOfOrder(uint256 orderID) public view returns(uint256) {
-        uint256 buyer = order[orderID].buyer;
-        uint256 seller = order[orderID].seller;
+    function getPerFeeOfOrder(uint80 orderID) public view returns(uint256) {
+        uint32 buyer = order[orderID].buyer;
+        uint32 seller = order[orderID].seller;
         uint256 buyerFeePaid = order[orderID].feePaid[buyer];
         uint256 sellerFeePaid = order[orderID].feePaid[seller];
         uint256 orderFeePaid = buyerFeePaid.add(sellerFeePaid);
@@ -88,7 +92,7 @@ contract InfoManageable is TradeBasic, Ownable {
      * @dev Update default number of trustee used for service
      * @param _trusteeNumber Number of default trustees
      */
-    function updateDefaultTrusteeNumber(uint256 _trusteeNumber) public onlyOwner returns(bool) {
+    function updateDefaultTrusteeNumber(uint8 _trusteeNumber) public onlyOwner returns(bool) {
         // trusteeNumber should bigger than 3 and be a even number
         require(_trusteeNumber >= 3);
         require(_trusteeNumber % 2 != 0);
@@ -111,23 +115,62 @@ contract InfoManageable is TradeBasic, Ownable {
     }
 }
 
+contract Pausable is Ownable {
+    event Pause();
+    event Unpause();
 
-contract OrderManageable is TradeBasic, Ownable  {
+    bool public paused = false;
+
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is not paused.
+     */
+    modifier whenNotPaused() {
+        require(!paused);
+        _;
+    }
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is paused.
+     */
+    modifier whenPaused() {
+        require(paused);
+        _;
+    }
+
+    /**
+     * @dev called by the owner to pause, triggers stopped state
+     */
+    function pause() onlyOwner whenNotPaused public {
+        paused = true;
+        emit Pause();
+    }
+
+    /**
+     * @dev called by the owner to unpause, returns to normal state
+     */
+    function unpause() onlyOwner whenPaused public {
+        paused = false;
+        emit Unpause();
+    }
+}
+
+contract OrderManageable is TradeBasic, Ownable, Pausable  {
 
     using strings for *;
 
     // Type of user of a contract
     enum UserType { Buyer, Seller }
 
-    event LogCreateOrder(uint256 indexed orderID, uint256 indexed user, UserType userType, uint256 feePayed);
+    event LogCreateOrder(uint80 indexed orderID, uint32 indexed user, UserType userType, uint256 feePayed);
 
-    event LogCancelTrade(uint256 indexed orderID, address indexed creator);
+    event LogCancelTrade(uint80 indexed orderID, address indexed creator);
 
-    event LogConfirmTradeOrder(uint256 indexed orderID, uint256 indexed user, address[] trustees, uint256 feePayed);
+    event LogConfirmTradeOrder(uint80 indexed orderID, uint32 indexed user, address[] trustees, uint256 feePayed);
 
-    event LogUploadSecret(uint256 indexed orderID, uint256 indexed user, string secrets);
+    event LogUploadSecret(uint80 indexed orderID, uint32 indexed user, string secrets);
 
-    event LogFinishOrder(uint256 indexed orderID);
+    event LogFinishOrder(uint80 indexed orderID);
 
     event LogWithdrawFee(address indexed trustee, uint256 amount);
 
@@ -139,7 +182,7 @@ contract OrderManageable is TradeBasic, Ownable  {
 
 
     // Can only be called by creator
-    modifier onlyCreator(uint256 orderID) {
+    modifier onlyCreator(uint80 orderID) {
         require(order[orderID].creator == msg.sender);
         _;
     }
@@ -151,13 +194,14 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @param userType User type of msg.sender
      */
     function createNewTradeOrder(
-        uint256 orderID,
-        uint256 userID,
+        uint80 orderID,
+        uint32 userID,
         UserType userType
     )
         external
         payable
         onlyOwner
+        whenNotPaused
         onlyValidateType(userType)
         returns(bool)
     {
@@ -188,7 +232,7 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @param orderID ID of order
      * @param createUserID User ID when create order
      */
-    function cancelTrade(uint256 orderID, uint256 createUserID) public onlyCreator(orderID) returns(bool) {
+    function cancelTrade(uint80 orderID, uint32 createUserID) public whenNotPaused onlyCreator(orderID) returns(bool) {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
         require(order[orderID].feePaid[createUserID] > 0);
@@ -204,7 +248,7 @@ contract OrderManageable is TradeBasic, Ownable  {
     /**
      * @dev Seller/Buyer confirm order
      */
-    function confirmTradeOrder(uint256 orderID, uint256 userID) external onlyCreator(orderID) payable returns(bool) {
+    function confirmTradeOrder(uint80 orderID, uint32 userID) external whenNotPaused onlyCreator(orderID) payable returns(bool) {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
         require(msg.value > 0);
@@ -228,7 +272,7 @@ contract OrderManageable is TradeBasic, Ownable  {
 
         // trustees.length should be same with trusteeNumber
         require(trustees.length == trusteeNumber);
-        for (uint256 i = 0; i < trustees.length; i++) {
+        for (uint8 i = 0; i < trustees.length; i++) {
             order[orderID].isTrustee[trustees[i]] = true;
         }
 
@@ -249,11 +293,12 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @param userID ID of user
      */
     function uploadSecret(
-        uint256 orderID,
+        uint80 orderID,
         string secrets,
-        uint256 userID
+        uint32 userID
     )
         public
+        whenNotPaused
         onlyCreator(orderID)
         returns(bool)
     {
@@ -270,7 +315,7 @@ contract OrderManageable is TradeBasic, Ownable  {
         require(shardArrayLength == trustees.length);
 
         // Will cover value before if this is not the first time
-        for (uint256 i = 0; i < shardArrayLength; i++) {
+        for (uint8 i = 0; i < shardArrayLength; i++) {
             string memory tmpShard = s.split(sep).toString();
 
             order[orderID].trusteeShard[trustees[i]][userID].shard = tmpShard;
@@ -287,14 +332,14 @@ contract OrderManageable is TradeBasic, Ownable  {
     /**
      * @dev Finish the order normally
      */
-    function finishOrder(uint256 orderID) public onlyCreator(orderID) returns(bool) {
+    function finishOrder(uint80 orderID) public whenNotPaused onlyCreator(orderID) returns(bool) {
         // Ensure secret have been uploaded
         require(order[orderID].status == OrderStatus.SecretUploaded);
 
         order[orderID].status = OrderStatus.Finished;
 
         uint256 perFee = getPerFeeOfOrder(orderID);
-        for (uint256 i = 0; i < order[orderID].trustees.length; i++) {
+        for (uint8 i = 0; i < order[orderID].trustees.length; i++) {
             address trustee = order[orderID].trustees[i];
             feeRemain[trustee] = feeRemain[trustee].add(perFee);
         }
@@ -306,7 +351,7 @@ contract OrderManageable is TradeBasic, Ownable  {
     /**
      * @dev Trustee withdraw fee back
      */
-    function withdrawFee() public returns(bool) {
+    function withdrawFee() whenNotPaused public returns(bool) {
         uint256 amount;
         amount = feeRemain[msg.sender];
         require(amount > 0);
@@ -327,9 +372,9 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @param user ID of user Whose secret you want to get
      */
     function getSecret(
-        uint256 orderID,
+        uint80 orderID,
         address trusteeID,
-        uint256 user
+        uint32 user
     )
         public
         view
@@ -343,7 +388,7 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @dev Get buyer of order
      * @param orderID ID of order
      */
-    function getOrderBuyer(uint256 orderID) public view returns(uint256) {
+    function getOrderBuyer(uint80 orderID) public view returns(uint256) {
         return order[orderID].buyer;
     }
 
@@ -352,7 +397,7 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @dev Get seller of order
      * @param orderID ID of order
      */
-    function getOrderSeller(uint256 orderID) public view returns(uint256) {
+    function getOrderSeller(uint80 orderID) public view returns(uint256) {
         return order[orderID].seller;
     }
 
@@ -361,7 +406,7 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @dev Get trustees
      * @param orderID ID of order
      */
-    function getOrderTrustees(uint256 orderID) public view returns(address[]) {
+    function getOrderTrustees(uint80 orderID) public view returns(address[]) {
         return order[orderID].trustees;
     }
 
@@ -371,7 +416,7 @@ contract OrderManageable is TradeBasic, Ownable  {
      * @param orderID ID of order
      */
     function isOrderTrustee(
-        uint256 orderID,
+        uint80 orderID,
         address user
     )
         public
@@ -385,9 +430,9 @@ contract OrderManageable is TradeBasic, Ownable  {
     /**
      * @dev Update order status if buyer and seller all uploaded secret
      */
-    function updateStatusWhenSecretUploaded(uint256 orderID) internal returns(bool){
-        uint256 buyer = order[orderID].buyer;
-        uint256 seller = order[orderID].seller;
+    function updateStatusWhenSecretUploaded(uint80 orderID) internal returns(bool){
+        uint32 buyer = order[orderID].buyer;
+        uint32 seller = order[orderID].seller;
 
         if (order[orderID].uploaded[buyer] == true && order[orderID].uploaded[seller] == true) {
             order[orderID].status = OrderStatus.SecretUploaded;
@@ -456,16 +501,16 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
         uint256 winner;
     }
 
-    event Arbitrate(uint256 orderID, uint256 indexed user);
+    event Arbitrate(uint80 orderID, uint32 indexed user);
 
-    event Judge(uint256 orderID, uint256 indexed winner, address indexed judge);
+    event Judge(uint80 orderID, uint32 indexed winner, address indexed judge);
 
 
     /**
      * @dev User arbitrate
      * @param orderID ID of order want to arbitrate for
      */
-    function arbitrate(uint256 orderID, uint256 user) public onlyOwner returns(bool) {
+    function arbitrate(uint80 orderID, uint32 user) public onlyOwner returns(bool) {
         // Not necessary check order(check by onlyTrader)
         // Have not arbitrate before
         require(arbitration[orderID].requester == 0);
@@ -484,7 +529,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
      * @param orderID ID of order
      * @param winner User who wins
      */
-    function judge(uint256 orderID, uint256 winner) public onlyArbitrator returns(bool) {
+    function judge(uint80 orderID, uint32 winner) public onlyArbitrator returns(bool) {
         // Ensure order is in arbitration
         require(arbitration[orderID].requester != 0);
         // Ensure secret have been uploaded
@@ -498,7 +543,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
 
         // Compute fee for trustee
         uint256 perFee = getPerFeeOfOrder(orderID);
-        for (uint256 i = 0; i < order[orderID].trustees.length; i++) {
+        for (uint8 i = 0; i < order[orderID].trustees.length; i++) {
             address trustee = order[orderID].trustees[i];
             feeRemain[trustee] = feeRemain[trustee].add(perFee);
         }
@@ -511,7 +556,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
      * @dev Get arbitration requester
      * @param orderID ID of order
      */
-    function getRequester(uint256 orderID) public view returns(uint256) {
+    function getRequester(uint80 orderID) public view returns(uint256) {
         return arbitration[orderID].requester;
     }
 
@@ -520,7 +565,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
      * @dev Get arbitration winner
      * @param orderID ID of order
      */
-    function getWinner(uint256 orderID) public view returns(uint256) {
+    function getWinner(uint80 orderID) public view returns(uint256) {
         return arbitration[orderID].winner;
     }
 }

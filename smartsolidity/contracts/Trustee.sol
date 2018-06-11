@@ -25,7 +25,8 @@ contract Trustee is Ownable {
         uint256 deposit;
 
         // Fame of trustee
-        uint256 fame;
+        // Should less than 2^32(4294967296)
+        uint32 fame;
 
         // Public key of trustee used for others to encrypt data
         string publicKey;
@@ -46,7 +47,7 @@ contract Trustee is Ownable {
 
     event LogDecreaseDeposit(address indexed trustee, uint256 amount);
 
-    event LogUpdateTrusteeFame(address indexed trustee, uint256 newFame);
+    event LogUpdateTrusteeFame(address indexed trustee, uint32 newFame);
 
     event LogUpdateTrusteePublicKey(address indexed trustee, string newPublicKey);
 
@@ -107,7 +108,7 @@ contract Trustee is Ownable {
      */
     function addTrustee(
         address ID,
-        uint256 fame,
+        uint32 fame,
         string  publicKey
     )
         public
@@ -168,7 +169,7 @@ contract Trustee is Ownable {
      * @param ID ID of a trustee
      * @param newFame New fame of a trustee
      */
-    function updateTrusteeFame(address ID, uint256 newFame) public onlyOwner returns(bool) {
+    function updateTrusteeFame(address ID, uint32 newFame) public onlyOwner returns(bool) {
         require(isTrustee(ID));
 
         uint256 oldDeposit = trustees[IDIndex[ID]].deposit;
@@ -186,7 +187,7 @@ contract Trustee is Ownable {
         require(msg.value > 0);
 
         address ID = msg.sender;
-        uint256 oldFame = trustees[IDIndex[ID]].fame;
+        uint32 oldFame = trustees[IDIndex[ID]].fame;
         uint256 newDeposit = trustees[IDIndex[ID]].deposit.add(msg.value);
 
         // Update deposit payed by trustee
@@ -205,7 +206,7 @@ contract Trustee is Ownable {
         require(amount > 0);
 
         address ID = msg.sender;
-        uint256 oldFame = trustees[IDIndex[ID]].fame;
+        uint32 oldFame = trustees[IDIndex[ID]].fame;
         uint256 oldDeposit = trustees[IDIndex[ID]].deposit;
         require(amount <= oldDeposit);
         uint256 newDeposit = oldDeposit.sub(amount);
@@ -297,7 +298,7 @@ contract Trustee is Ownable {
      */
     function updateTrusteeFameOrDeposit(
         address ID,
-        uint256 newFame,
+        uint32 newFame,
         uint256 newDeposit
     )
         internal
@@ -328,7 +329,7 @@ contract Trustee is Ownable {
      * @param deposit Fame of a deposit
      */
     function getInsertPosition(
-        uint256 fame,
+        uint32 fame,
         uint256 deposit
     )
         internal
