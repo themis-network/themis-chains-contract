@@ -495,10 +495,10 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
 
     struct ArbitrateInfo {
         // Who arbitrate
-        uint256 requester;
+        uint32 requester;
 
         // Who wins
-        uint256 winner;
+        uint32 winner;
     }
 
     event Arbitrate(uint80 orderID, uint32 indexed user);
@@ -556,7 +556,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
      * @dev Get arbitration requester
      * @param orderID ID of order
      */
-    function getRequester(uint80 orderID) public view returns(uint256) {
+    function getRequester(uint80 orderID) public view returns(uint32) {
         return arbitration[orderID].requester;
     }
 
@@ -565,7 +565,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
      * @dev Get arbitration winner
      * @param orderID ID of order
      */
-    function getWinner(uint80 orderID) public view returns(uint256) {
+    function getWinner(uint80 orderID) public view returns(uint32) {
         return arbitration[orderID].winner;
     }
 }
