@@ -38,32 +38,34 @@ truffle test
 
 test result:
 ```bash
- Contract: Trade test
-    ✓ should right create order by themis user
+  Contract: Trade test
+    ✓ should right create order by owner (48ms)
     ✓ can not create two order with same orderID
     ✓ only owner can create order
     ✓ seller/buyer can not be same when confirm an order
-    ✓ another user can confirm order, and should return actual trustees(even) (90ms)
-    ✓ creator can upload encrypted shard (270ms)
+    ✓ another user can confirm order, and should return actual trustees(even) (127ms)
+    ✓ creator can upload encrypted shard (437ms)
     ✓ upload secret will be revert when secret's length is not same with trustee's length
     ✓ upload secret will be revert when userID is not buyer/seller
-    ✓ owner can request for arbitration for user
-    ✓ only judge can judge the order (76ms)
+    ✓ trustee should send back the result of verification of shard (304ms)
+    ✓ owner can request for arbitration for user (44ms)
+    ✓ only judge can judge the order (114ms)
+    ✓ trustee can withdraw fee (264ms)
 
   Contract: Trustee test
     Add/Update/Remove trustee
       ✓ should get nothing when there is no trustees
-      ✓ owner should right add trustee (57ms)
-      ✓ trustee should right increase deposit (104ms)
-      ✓ should right remove trustee and get back deposit (267ms)
+      ✓ owner should right add trustee (85ms)
+      ✓ trustee should right increase deposit (61ms)
+      ✓ should right remove trustee and get back deposit (336ms)
     Trustee list
-      ✓ should get trustees sort by fame and deposit (366ms)
-      ✓ should right update one's fame and his position in list will be changed (91ms)
-      ✓ should right increase trustee' deposit and his position will be changed (72ms)
-      ✓ should right decrease trustee's deposit and his position will be changed (278ms)
+      ✓ should get trustees sort by fame and deposit (486ms)
+      ✓ should right update one's fame and his position in list will be changed (116ms)
+      ✓ should right increase trustee' deposit and his position will be changed (104ms)
+      ✓ should right decrease trustee's deposit and his position will be changed (340ms)
 
 
-  18 passing (3s)
+  20 passing (5s)
 ```
 
 

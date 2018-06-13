@@ -25,7 +25,15 @@ contract TradeBasic {
     // when a order finished/judged;
     mapping(address => uint256) feeRemain;
 
-    enum OrderStatus { Created, Canceled, Confirmed, SecretUploaded, Finished }
+    enum OrderStatus {
+        Created,
+        Canceled,
+        Confirmed,
+        SecretUploaded,
+        VerifiedSuccess,
+        InArbitration,
+        Finished
+    }
 
     struct TradeOrder {
         // Creator
@@ -56,12 +64,21 @@ contract TradeBasic {
         // Trustee's id(address) => user id => info
         mapping(address => mapping(uint32 => EncryptedShard)) trusteeShard;
 
+        // The verify data of user's shard
+        mapping(uint32 => string) verifyData;
+
         OrderStatus status;
     }
 
     struct EncryptedShard {
         // Encrypted shard string
         string shard;
+
+        // Shard have been verified by trustee
+        bool verified;
+
+        // Shard is a right shard or not(result is sent by trustee)
+        bool rightShard;
     }
 
 
@@ -170,6 +187,8 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
 
     event LogUploadSecret(uint80 indexed orderID, uint32 indexed user, string secrets);
 
+    event LogVerifyResult(address indexed trustee, bool buyerResult, bool sellerResult);
+
     event LogFinishOrder(uint80 indexed orderID);
 
     event LogWithdrawFee(address indexed trustee, uint256 amount);
@@ -184,6 +203,13 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
     // Can only be called by creator
     modifier onlyCreator(uint80 orderID) {
         require(order[orderID].creator == msg.sender);
+        _;
+    }
+
+
+    // Can only be called by trustee of a order
+    modifier onlyTrustee(uint80 orderID) {
+        require(order[orderID].isTrustee[msg.sender] == true);
         _;
     }
 
@@ -232,7 +258,7 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
      * @param orderID ID of order
      * @param createUserID User ID when create order
      */
-    function cancelTrade(uint80 orderID, uint32 createUserID) public whenNotPaused onlyCreator(orderID) returns(bool) {
+    function cancelTrade(uint80 orderID, uint32 createUserID) external whenNotPaused onlyCreator(orderID) returns(bool) {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
         require(order[orderID].feePaid[createUserID] > 0);
@@ -291,13 +317,15 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
      * @param orderID ID of order
      * @param secrets Secrets of trader's private key
      * @param userID ID of user
+     * @param verifyData Trustee will decode shard, and verify shard with this verifyData by shamir
      */
     function uploadSecret(
         uint80 orderID,
         string secrets,
-        uint32 userID
+        uint32 userID,
+        string verifyData
     )
-        public
+        external
         whenNotPaused
         onlyCreator(orderID)
         returns(bool)
@@ -308,21 +336,24 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
 
         strings.slice memory sep = SEPARATE.toSlice();
         strings.slice memory s = secrets.toSlice();
-        uint256 shardArrayLength = s.count(sep) + 1;
 
         // Shard length should be same with trustees length
         address[] memory trustees = order[orderID].trustees;
-        require(shardArrayLength == trustees.length);
+        require((s.count(sep) + 1) == trustees.length);
 
         // Will cover value before if this is not the first time
-        for (uint8 i = 0; i < shardArrayLength; i++) {
-            string memory tmpShard = s.split(sep).toString();
-
-            order[orderID].trusteeShard[trustees[i]][userID].shard = tmpShard;
+        for (uint8 i = 0; i < trustees.length; i++) {
+            order[orderID].trusteeShard[trustees[i]][userID].shard = s.split(sep).toString();
+            // In case of situation that user want to update some bad shard after
+            // trustee verified right shard
+            order[orderID].trusteeShard[trustees[i]][userID].rightShard = false;
+            order[orderID].trusteeShard[trustees[i]][userID].verified = false;
         }
 
         order[orderID].uploaded[userID] = true;
         updateStatusWhenSecretUploaded(orderID);
+
+        order[orderID].verifyData[userID] = verifyData;
 
         emit LogUploadSecret(orderID, userID, secrets);
         return true;
@@ -330,11 +361,42 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
 
 
     /**
-     * @dev Finish the order normally
+     * @dev Trustee send back verify result
+     * @param orderID ID of order
+     * @param buyerResult Result verified by trustee, which is uploaded by buyer
+     * @param sellerResult Result verified by trustee, which is uploaded by seller
      */
-    function finishOrder(uint80 orderID) public whenNotPaused onlyCreator(orderID) returns(bool) {
-        // Ensure secret have been uploaded
+    function sendVerifyResult(
+        uint80 orderID,
+        bool buyerResult,
+        bool sellerResult
+    )
+        external
+        onlyTrustee(orderID)
+        returns(bool)
+    {
         require(order[orderID].status == OrderStatus.SecretUploaded);
+        uint32 buyer = order[orderID].buyer;
+        uint32 seller = order[orderID].seller;
+        order[orderID].trusteeShard[msg.sender][buyer].rightShard = buyerResult;
+        order[orderID].trusteeShard[msg.sender][buyer].verified = true;
+        order[orderID].trusteeShard[msg.sender][seller].rightShard = sellerResult;
+        order[orderID].trusteeShard[msg.sender][seller].verified = true;
+
+        // Change order status to VerifiedSuccess if result of all shard verified by trustees is right
+        updateStatusWhenShardVerified(orderID);
+
+        emit LogVerifyResult(msg.sender, buyerResult, sellerResult);
+    }
+
+
+    /**
+     * @dev Finish the order normally
+     * @param orderID ID of order
+     */
+    function finishOrder(uint80 orderID) external whenNotPaused onlyCreator(orderID) returns(bool) {
+        // Ensure shard have been right verified
+        require(order[orderID].status == OrderStatus.VerifiedSuccess);
 
         order[orderID].status = OrderStatus.Finished;
 
@@ -351,7 +413,7 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
     /**
      * @dev Trustee withdraw fee back
      */
-    function withdrawFee() whenNotPaused public returns(bool) {
+    function withdrawFee() external whenNotPaused returns(bool) {
         uint256 amount;
         amount = feeRemain[msg.sender];
         require(amount > 0);
@@ -381,6 +443,31 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
         returns(string)
     {
         return order[orderID].trusteeShard[trusteeID][user].shard;
+    }
+
+    /**
+     * @dev Get verify data of user's shard
+     * @param orderID ID of order
+     * @param user ID of user
+     */
+    function getVerifyData(
+        uint80 orderID,
+        uint32 user
+    )
+        public
+        view
+        returns(string)
+    {
+        return order[orderID].verifyData[user];
+    }
+
+
+    /**
+     * @dev Get order status
+     * @param orderID ID of order
+     */
+    function getOrderStatus(uint80 orderID) public view returns(OrderStatus) {
+        return order[orderID].status;
     }
 
 
@@ -438,6 +525,38 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
             order[orderID].status = OrderStatus.SecretUploaded;
         }
 
+        return true;
+    }
+
+
+    /**
+     * @dev Update order status if shard uploaded by seller and buyer is right
+     * @param orderID ID of order
+     */
+    function updateStatusWhenShardVerified(uint80 orderID) internal returns(bool) {
+        uint32 buyer = order[orderID].buyer;
+        uint32 seller = order[orderID].seller;
+
+        for (uint8 i = 0; i < order[orderID].trustees.length; i++) {
+            address trustee = order[orderID].trustees[i];
+            if (order[orderID].trusteeShard[trustee][buyer].verified == false) {
+                return false;
+            }
+
+            if (order[orderID].trusteeShard[trustee][buyer].rightShard == false) {
+                return false;
+            }
+
+            if (order[orderID].trusteeShard[trustee][seller].verified == false) {
+                return false;
+            }
+
+            if (order[orderID].trusteeShard[trustee][seller].rightShard == false) {
+                return false;
+            }
+        }
+
+        order[orderID].status = OrderStatus.VerifiedSuccess;
         return true;
     }
 }
@@ -516,7 +635,9 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
         require(arbitration[orderID].requester == 0);
         require(order[orderID].buyer == user || order[orderID].seller == user);
         // Ensure secret have been uploaded
-        require(order[orderID].status == OrderStatus.SecretUploaded);
+        require(order[orderID].status == OrderStatus.VerifiedSuccess);
+
+        order[orderID].status = OrderStatus.InArbitration;
 
         arbitration[orderID].requester = user;
         emit Arbitrate(orderID, user);
@@ -533,7 +654,7 @@ contract Arbitrable is TradeBasic, ArbitratorManageable {
         // Ensure order is in arbitration
         require(arbitration[orderID].requester != 0);
         // Ensure secret have been uploaded
-        require(order[orderID].status == OrderStatus.SecretUploaded);
+        require(order[orderID].status == OrderStatus.InArbitration);
 
         // Winner must be one of buyer/seller
         require(winner == order[orderID].buyer || winner == order[orderID].seller);
