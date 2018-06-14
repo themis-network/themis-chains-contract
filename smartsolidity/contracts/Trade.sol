@@ -95,6 +95,11 @@ contract TradeBasic {
         uint256 perFee = orderFeePaid.div(order[orderID].trustees.length);
         return perFee;
     }
+
+    modifier onlyValidatedUID(uint32 uid) {
+        require(uid != 0);
+        _;
+    }
 }
 
 
@@ -228,6 +233,7 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
         payable
         onlyOwner
         whenNotPaused
+        onlyValidatedUID(userID)
         onlyValidateType(userType)
         returns(bool)
     {
@@ -258,9 +264,19 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
      * @param orderID ID of order
      * @param createUserID User ID when create order
      */
-    function cancelTrade(uint80 orderID, uint32 createUserID) external whenNotPaused onlyCreator(orderID) returns(bool) {
+    function cancelTrade(
+        uint80 orderID,
+        uint32 createUserID
+    )
+        external
+        whenNotPaused
+        onlyCreator(orderID)
+        onlyValidatedUID(createUserID)
+        returns(bool)
+    {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
+        // Ensure order is created by createUserID
         require(order[orderID].feePaid[createUserID] > 0);
 
         order[orderID].status = OrderStatus.Canceled;
@@ -274,7 +290,17 @@ contract OrderManageable is TradeBasic, Ownable, Pausable  {
     /**
      * @dev Seller/Buyer confirm order
      */
-    function confirmTradeOrder(uint80 orderID, uint32 userID) external whenNotPaused onlyCreator(orderID) payable returns(bool) {
+    function confirmTradeOrder(
+        uint80 orderID,
+        uint32 userID
+    )
+        external
+        payable
+        whenNotPaused
+        onlyCreator(orderID)
+        onlyValidatedUID(userID)
+        returns(bool)
+    {
         // Ensure order is created
         require(order[orderID].status == OrderStatus.Created);
         require(msg.value > 0);
@@ -581,6 +607,7 @@ contract ArbitratorManageable is Ownable {
      * @param who Address will be added
      */
     function addArbitrator(address who) public onlyOwner returns(bool) {
+        require(who != address(0));
         arbitrator[who] = true;
         emit AddArbitrator(who);
         return true;
@@ -592,6 +619,7 @@ contract ArbitratorManageable is Ownable {
      * @param who Address will be removed
      */
     function removeArbitrator(address who) public onlyOwner returns(bool) {
+        require(who != address(0));
         delete(arbitrator[who]);
         emit RemoveArbitrator(who);
         return true;

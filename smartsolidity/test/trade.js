@@ -77,9 +77,16 @@ contract("Trade test", function (accounts) {
     })
 
     it("can not create two order with same orderID", async function() {
-        // buyer is added to themis user before
         const buyer = 12345;
         const orderID = 1;
+        const fee = web3.toWei(20, "ether");
+
+        await assertRevert(this.TradeIns.createNewTradeOrder(orderID, buyer, BUYER, {value: fee}));
+    })
+
+    it("user id can not be zero when creating order", async function () {
+        const buyer = 0;
+        const orderID = 2;
         const fee = web3.toWei(20, "ether");
 
         await assertRevert(this.TradeIns.createNewTradeOrder(orderID, buyer, BUYER, {value: fee}));
@@ -97,6 +104,14 @@ contract("Trade test", function (accounts) {
 
     it("seller/buyer can not be same when confirm an order", async function () {
         const seller = 12345;
+        const orderID = 1;
+        const fee = web3.toWei(20, "ether");
+
+        await assertRevert(this.TradeIns.confirmTradeOrder(orderID, seller, {value: fee}));
+    })
+
+    it("user id can not be zero when confirm an order", async function () {
+        const seller = 0;
         const orderID = 1;
         const fee = web3.toWei(20, "ether");
 

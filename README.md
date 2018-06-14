@@ -39,33 +39,35 @@ truffle test
 test result:
 ```bash
   Contract: Trade test
-    ✓ should right create order by owner (48ms)
+    ✓ should right create order by owner (51ms)
     ✓ can not create two order with same orderID
+    ✓ user id can not be zero when creating order
     ✓ only owner can create order
     ✓ seller/buyer can not be same when confirm an order
-    ✓ another user can confirm order, and should return actual trustees(even) (127ms)
-    ✓ creator can upload encrypted shard (437ms)
+    ✓ user id can not be zero when confirm an order
+    ✓ another user can confirm order, and should return actual trustees(even) (117ms)
+    ✓ creator can upload encrypted shard (431ms)
     ✓ upload secret will be revert when secret's length is not same with trustee's length
     ✓ upload secret will be revert when userID is not buyer/seller
-    ✓ trustee should send back the result of verification of shard (304ms)
-    ✓ owner can request for arbitration for user (44ms)
-    ✓ only judge can judge the order (114ms)
-    ✓ trustee can withdraw fee (264ms)
+    ✓ trustee should send back the result of verification of shard (343ms)
+    ✓ owner can request for arbitration for user (49ms)
+    ✓ only judge can judge the order (115ms)
+    ✓ trustee can withdraw fee (151ms)
 
   Contract: Trustee test
     Add/Update/Remove trustee
       ✓ should get nothing when there is no trustees
-      ✓ owner should right add trustee (85ms)
-      ✓ trustee should right increase deposit (61ms)
-      ✓ should right remove trustee and get back deposit (336ms)
+      ✓ owner should right add trustee (88ms)
+      ✓ trustee should right increase deposit (60ms)
+      ✓ should right remove trustee and get back deposit (415ms)
     Trustee list
-      ✓ should get trustees sort by fame and deposit (486ms)
-      ✓ should right update one's fame and his position in list will be changed (116ms)
-      ✓ should right increase trustee' deposit and his position will be changed (104ms)
-      ✓ should right decrease trustee's deposit and his position will be changed (340ms)
+      ✓ should get trustees sort by fame and deposit (515ms)
+      ✓ should right update one's fame and his position in list will be changed (124ms)
+      ✓ should right increase trustee' deposit and his position will be changed (99ms)
+      ✓ should right decrease trustee's deposit and his position will be changed (429ms)
 
 
-  20 passing (5s)
+  22 passing (5s)
 ```
 
 
