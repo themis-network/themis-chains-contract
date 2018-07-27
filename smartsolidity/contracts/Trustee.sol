@@ -28,8 +28,8 @@ contract Trustee is Ownable {
         // Should less than 2^32(4294967296)
         uint32 fame;
 
-        // Public key of trustee used for others to encrypt data
-        string publicKey;
+        // Encrypt key of trustee used for others to encrypt data
+        string encryptKey;
     }
 
     // Array of trustees
@@ -49,7 +49,7 @@ contract Trustee is Ownable {
 
     event LogUpdateTrusteeFame(address indexed trustee, uint32 newFame);
 
-    event LogUpdateTrusteePublicKey(address indexed trustee, string newPublicKey);
+    event LogUpdateTrusteeEncryptKey(address indexed trustee, string encryptKey);
 
 
     /**
@@ -104,12 +104,12 @@ contract Trustee is Ownable {
      * @dev Init deposit of a trustee is 0, trustee should use increaseDeposit() to pay some deposit 
      * @param ID ID of a trustee
      * @param fame Fame of a trustee
-     * @param publicKey Public Key of trustee, which used to encrypt data
+     * @param encryptKey Encrypt Key of trustee, which used to encrypt data
      */
     function addTrustee(
         address ID,
         uint32 fame,
-        string  publicKey
+        string  encryptKey
     )
         public
         onlyOwner
@@ -127,7 +127,7 @@ contract Trustee is Ownable {
         require(success);
 
         // Deposit will be set 0 when added by owner
-        trustees.push(TrusteeInfo(ID, 0, fame, publicKey));
+        trustees.push(TrusteeInfo(ID, 0, fame, encryptKey));
 
         // Update list and IDIndex
         trusteeList.insert(position, trustees.length - 1, direction);
@@ -221,12 +221,12 @@ contract Trustee is Ownable {
 
 
     /**
-     * @dev Update public key
-     * @param newKey New public key
+     * @dev Update encrypt key
+     * @param newEncryptKey New encrypt key
      */
-    function updatePublicKey(string newKey) public onlyTrustee returns(bool) {
-        trustees[IDIndex[msg.sender]].publicKey = newKey;
-        emit LogUpdateTrusteePublicKey(msg.sender, newKey);
+    function updateEncryptKey(string newEncryptKey) public onlyTrustee returns(bool) {
+        trustees[IDIndex[msg.sender]].encryptKey = newEncryptKey;
+        emit LogUpdateTrusteeEncryptKey(msg.sender, newEncryptKey);
         return true;
     }
 
@@ -236,7 +236,7 @@ contract Trustee is Ownable {
      * @param who ID of trustee
      */
     function getTrusteeInfo(address who) public view returns(uint256, uint256, string) {
-        return (trustees[IDIndex[who]].fame, trustees[IDIndex[who]].deposit, trustees[IDIndex[who]].publicKey);
+        return (trustees[IDIndex[who]].fame, trustees[IDIndex[who]].deposit, trustees[IDIndex[who]].encryptKey);
     }
 
 
@@ -314,7 +314,7 @@ contract Trustee is Ownable {
         require(success);
 
         // Update trustee fame and deposit
-        trustees[IDIndex[ID]] = TrusteeInfo(ID, newDeposit, newFame, trustees[IDIndex[ID]].publicKey);
+        trustees[IDIndex[ID]] = TrusteeInfo(ID, newDeposit, newFame, trustees[IDIndex[ID]].encryptKey);
 
         // Reinsert node to list
         trusteeList.insert(position, IDIndex[ID], direction);
