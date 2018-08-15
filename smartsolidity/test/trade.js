@@ -230,31 +230,6 @@ contract("Trade test", function (accounts) {
         await assertRevert(this.TradeIns.uploadSecret(orderID, buyerShard, other, buyerVerifyData));
     })
 
-    it("trustee should send back the result of verification of shard", async function () {
-        // Check shard is right uploaded
-        const host_1 = accounts[3];
-        const host_2 = accounts[4];
-        const host_3 = accounts[5];
-        const host_4 = accounts[6];
-        const host_5 = accounts[7];
-
-        const orderID = 1;
-        const SecretUploaded = 3;
-        const VerifiedSuccess = 4;
-
-        const statusBefore = await this.TradeIns.getOrderStatus(orderID);
-        assert.equal(statusBefore, SecretUploaded, "status before should be SecretUploaded");
-
-        await this.TradeIns.sendVerifyResult(orderID, true, true, {from: host_1});
-        await this.TradeIns.sendVerifyResult(orderID, true, true, {from: host_2});
-        await this.TradeIns.sendVerifyResult(orderID, true, true, {from: host_3});
-        await this.TradeIns.sendVerifyResult(orderID, true, true, {from: host_4});
-        await this.TradeIns.sendVerifyResult(orderID, true, true, {from: host_5});
-
-        const statusAfter = await this.TradeIns.getOrderStatus(orderID);
-        assert.equal(statusAfter, VerifiedSuccess, "status after should be VerifiedSuccess");
-    })
-
     it("owner can request for arbitration for user", async function () {
         const buyer = 12345;
         const orderID = 1;
